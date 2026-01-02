@@ -1,0 +1,38 @@
+format_version: 3.5.5
+name: unifi
+title: "Ubiquiti UniFi"
+version: 0.1.0
+source:
+  license: "Apache-2.0"
+description: "Elastic Agent integration for Ubiquiti UniFi products including Network, Protect, and other UniFi ecosystem devices. Provides automatic device type detection and ECS field mapping for syslog data, with API monitoring support planned for future releases."
+type: integration
+categories:
+  - network
+  - security
+  - observability
+conditions:
+  kibana:
+    version: "^9.0.8"
+  elastic:
+    subscription: "basic"
+screenshots:
+  - src: /img/sample-screenshot.png
+    title: Sample screenshot
+    size: 600x600
+    type: image/png
+icons:
+  - src: /img/icon.svg
+    title: UniFi logo
+    size: 32x32
+    type: image/svg+xml
+policy_templates:
+  - name: unifi
+    title: UniFi
+    description: Collect logs and metrics from UniFi devices
+    inputs:
+      - type: filestream
+        title: Collect UniFi syslog data from files
+        description: Collecting UniFi device logs via syslog filestream
+owner:
+  github: elastic/integrations
+  type: community

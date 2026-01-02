@@ -1,0 +1,236 @@
+- name: unifi
+  type: group
+  description: UniFi-specific fields.
+  fields:
+    - name: device_id
+      type: keyword
+      description: UniFi device identifier (e.g., U6-Lite, USW-24-POE).
+    - name: model
+      type: keyword
+      description: UniFi device model.
+    - name: firmware
+      type: keyword
+      description: UniFi device firmware version.
+    - name: device_type
+      type: keyword
+      description: Detected UniFi device type (access_point, switch, gateway, firewall, console, unknown).
+    - name: access_point
+      type: group
+      description: UniFi Access Point specific fields.
+      fields:
+        - name: message
+          type: text
+          description: Access point log message content.
+        - name: association_id
+          type: integer
+          description: IEEE 802.11 association ID (AID) assigned to the client.
+        - name: current_bssid
+          type: keyword
+          description: Current AP BSSID during roaming events.
+        - name: source_bssid
+          type: keyword
+          description: Source AP BSSID for roaming messages.
+        - name: sta_tracker
+          type: group
+          description: STA-TRACKER JSON event data.
+          fields:
+            - name: message_type
+              type: keyword
+              description: STA-TRACKER message type (e.g., STA_ASSOC_TRACKER).
+            - name: event_type
+              type: keyword
+              description: STA-TRACKER event type (e.g., success, failure, auth_flood, fixup, sta_roam).
+            - name: mac
+              type: keyword
+              description: Client MAC address from STA-TRACKER event.
+            - name: vap
+              type: keyword
+              description: Virtual AP interface name (e.g., wifi1ap9).
+            - name: assoc_status
+              type: keyword
+              description: Association status code.
+            - name: auth_rate
+              type: keyword
+              description: Authentication rate for auth_flood events.
+            - name: exceed_cnt
+              type: keyword
+              description: Count of exceeded threshold for auth_flood events.
+            - name: period_ms
+              type: keyword
+              description: Time period in milliseconds for auth_flood events.
+            - name: auth_failures
+              type: keyword
+              description: Number of authentication failures.
+            - name: event_id
+              type: keyword
+              description: STA-TRACKER event identifier.
+            - name: auth_ts
+              type: keyword
+              description: Authentication timestamp.
+            - name: sta_dc_reason
+              type: keyword
+              description: Station disconnect reason (e.g., roam, sta kicked).
+            - name: traffic_delta
+              type: keyword
+              description: Traffic delta in bytes for success events.
+            - name: dns_responses
+              type: keyword
+              description: Number of DNS responses observed.
+            - name: dns_timeouts
+              type: keyword
+              description: Number of DNS timeouts observed.
+            - name: ip_delta
+              type: keyword
+              description: IP delta value.
+            - name: ip_assign_type
+              type: keyword
+              description: IP assignment type (e.g., N/A, DHCP, static).
+            - name: assoc_delta
+              type: keyword
+              description: Association delta time in milliseconds.
+            - name: auth_delta
+              type: keyword
+              description: Authentication delta time in milliseconds.
+            - name: dns_resp_seen
+              type: keyword
+              description: Whether DNS response was seen (yes/no).
+            - name: avg_rssi
+              type: keyword
+              description: Average RSSI (signal strength) value.
+    - name: switch
+      type: group
+      description: UniFi Switch specific fields.
+      fields:
+        - name: message
+          type: text
+          description: Switch log message content.
+        - name: component
+          type: keyword
+          description: Switch component or service name (e.g., mcad, switch, syslog).
+        - name: module
+          type: keyword
+          description: Module name for function-call style logs (e.g., ace_reporter, cfgmtd).
+        - name: function
+          type: keyword
+          description: Function name for function-call style logs (e.g., set_inform_family, do_monitor).
+        - name: subsystem
+          type: keyword
+          description: Subsystem name for component-event logs (e.g., TRAPMGR, FDB, UBNT_HAL).
+        - name: event
+          type: group
+          description: Switch event details.
+          fields:
+            - name: type
+              type: keyword
+              description: Event type for component-event logs (e.g., Link Up, Link Down, IOT_VLAN_FDB_ADD).
+            - name: message
+              type: text
+              description: Extracted event message with contextual details.
+    - name: gateway
+      type: group
+      description: UniFi Gateway specific fields.
+      fields:
+        - name: message
+          type: text
+          description: Gateway system/service log message content.
+        - name: module
+          type: keyword
+          description: Module name for function-call style logs (e.g., udapi_cache, udapi-cfg, ace_reporter).
+        - name: function
+          type: keyword
+          description: Function name for function-call style logs (e.g., udapi_cache_set_global_update_interval).
+        - name: component
+          type: keyword
+          description: Component name for prefix-style logs (e.g., process, geoip-db, service).
+        - name: event
+          type: group
+          description: Gateway event details.
+          fields:
+            - name: message
+              type: text
+              description: Extracted event message with contextual details.
+        - name: speedtest
+          type: group
+          description: Gateway speedtest results from linkcheck process.
+          fields:
+            - name: download_mbps
+              type: float
+              description: Download speed in Mbps from speedtest results.
+            - name: upload_mbps
+              type: float
+              description: Upload speed in Mbps from speedtest results.
+    - name: console
+      type: group
+      description: UniFi OS Console specific fields.
+      fields:
+        - name: vendor
+          type: keyword
+          description: Console vendor from CEF header.
+        - name: product
+          type: keyword
+          description: Console product from CEF header.
+        - name: version
+          type: keyword
+          description: Console version from CEF header.
+        - name: event_class
+          type: keyword
+          description: Console event class from CEF header.
+        - name: severity
+          type: keyword
+          description: Console event severity from CEF header.
+        - name: message
+          type: text
+          description: Console log message content.
+        - name: source
+          type: group
+          description: Source information from console CEF logs.
+          fields:
+            - name: ip
+              type: ip
+              description: Source IP address from CEF src field.
+            - name: port
+              type: long
+              description: Source port from CEF spt field.
+        - name: destination
+          type: group
+          description: Destination information from console CEF logs.
+          fields:
+            - name: ip
+              type: ip
+              description: Destination IP address from CEF dst field.
+            - name: port
+              type: long
+              description: Destination port from CEF dpt field.
+        - name: network
+          type: group
+          description: Network information from console CEF logs.
+          fields:
+            - name: transport
+              type: keyword
+              description: Network transport protocol from CEF proto field.
+        - name: ips
+          type: group
+          description: UniFi IPS (Intrusion Prevention System) event details.
+          fields:
+            - name: risk
+              type: keyword
+              description: Risk level of the IPS event (e.g., high, medium, low).
+            - name: signature
+              type: keyword
+              description: IPS signature name that matched the traffic.
+            - name: signature_id
+              type: keyword
+              description: IPS signature identifier.
+            - name: session_id
+              type: keyword
+              description: IPS session identifier for tracking related events.
+    - name: firewall
+      type: group
+      description: UniFi Firewall specific fields.
+      fields:
+        - name: rule_id
+          type: keyword
+          description: Firewall rule identifier.
+        - name: description
+          type: keyword
+          description: Firewall rule description.

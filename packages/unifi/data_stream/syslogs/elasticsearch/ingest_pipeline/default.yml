@@ -1,0 +1,1048 @@
+---
+description: "Parse UniFi network device syslog messages with unified device type detection"
+processors:
+  # Preserve original event if configured
+  - set:
+      field: event.original
+      copy_from: message
+      if: "ctx.preserve_original_event == true && ctx.event?.original == null && ctx.message != null"
+
+  # Add ECS version and basic event metadata
+  - set:
+      field: ecs.version
+      value: "8.17.0"
+  - set:
+      field: event.kind
+      value: "event"
+
+  # Set observer fields only for identified CEF logs
+  - set:
+      field: observer.vendor
+      value: "Ubiquiti"
+      if: "ctx.message != null && ctx.message.contains('CEF:0|Ubiquiti|')"
+  - set:
+      field: observer.type
+      value: "network-application"
+      if: "ctx.message != null && ctx.message.contains('CEF:0|Ubiquiti|UniFi Network')"
+  - set:
+      field: observer.product
+      value: "UniFi Network Application"
+      if: "ctx.message != null && ctx.message.contains('CEF:0|Ubiquiti|UniFi Network')"
+  - set:
+      field: observer.type
+      value: "os"
+      if: "ctx.message != null && ctx.message.contains('CEF:0|Ubiquiti|UniFi OS')"
+  - set:
+      field: observer.product
+      value: "UniFi OS"
+      if: "ctx.message != null && ctx.message.contains('CEF:0|Ubiquiti|UniFi OS')"
+  - set:
+      field: observer.type
+      value: "security-application"
+      if: "ctx.message != null && ctx.message.contains('CEF:0|Ubiquiti|UniFi Protect')"
+  - set:
+      field: observer.product
+      value: "UniFi Protect Application"
+      if: "ctx.message != null && ctx.message.contains('CEF:0|Ubiquiti|UniFi Protect')"
+
+  # Parse UniFi device info from message (timestamp and host should come from filestream)
+  # Note: Device logs with full metadata will be parsed by device-specific parsers
+  # CEF logs (console) are handled by the dedicated console parser later
+  - grok:
+      field: message
+      patterns:
+        # Fallback: entire message (don't extract anything - let device parsers handle it)
+        - '^%{GREEDYDATA:unifi_raw_message}'
+      ignore_failure: true
+
+  # Update message with parsed content
+  - set:
+      field: message
+      copy_from: unifi_raw_message
+      if: "ctx.unifi_raw_message != null"
+
+  # Device type detection and routing logic - set dataset first
+  - set:
+      field: event.dataset
+      value: "unifi.syslogs"
+
+  # Console: CEF format logs from any UniFi application (check first - most specific)
+  - set:
+      field: unifi.device_type
+      value: "console"
+      if: "ctx.unifi?.device_type == null && ctx.message != null && ctx.message.contains('CEF:0|Ubiquiti|')"
+
+  # Access Points: Look for U6, U7, UAP patterns in message content
+  - set:
+      field: unifi.device_type
+      value: "access_point"
+      if: "ctx.unifi?.device_type == null && ctx.message != null && (ctx.message.contains('U6-') || ctx.message.contains('U7-') || ctx.message.contains('UAP-'))"
+
+  # Switches: Look for USW, US- patterns in message content
+  - set:
+      field: unifi.device_type
+      value: "switch"
+      if: "ctx.unifi?.device_type == null && ctx.message != null && (ctx.message.contains('USW-') || ctx.message.contains('USW_') || ctx.message.contains('US-') || ctx.message.contains('USP-'))"
+
+  # Firewall: Bracketed rule format with network tokens
+  - set:
+      field: unifi.device_type
+      value: "firewall"
+      if: "ctx.unifi?.device_type == null && ctx.message != null && ctx.message.contains('[') && (ctx.message.contains('PROTO=') || ctx.message.contains('SRC='))"
+
+  # Gateway: Standard syslog format with process[pid] pattern
+  - set:
+      field: unifi.device_type
+      value: "gateway"
+      if: "ctx.unifi?.device_type == null && ctx.message != null && (ctx.message.contains('[') && ctx.message.contains(']:'))"
+
+  # Unknown log types
+  - set:
+      field: unifi.device_type
+      value: "unknown"
+      if: "ctx.unifi?.device_type == null"
+
+  # Device-specific parsing based on detected type
+
+  # ACCESS POINT PARSING - Extract device info and process details
+  - grok:
+      field: message
+      patterns:
+        # UniFi AP format with PID: timestamp devicename device_id,model-firmware: process[pid][optional_tid]: log_message
+        - '^%{DATA} %{NOTSPACE:unifi.device_name} %{NOTSPACE:unifi.device_id},%{NOTSPACE:unifi.model}-%{NOTSPACE:unifi.firmware}: %{DATA:process.name}\[%{NUMBER:process.pid:int}\](?:\[%{NUMBER}\])?: %{GREEDYDATA:unifi.access_point.message}'
+        # UniFi AP format without PID: timestamp devicename device_id,model-firmware: process: log_message
+        - '^%{DATA} %{NOTSPACE:unifi.device_name} %{NOTSPACE:unifi.device_id},%{NOTSPACE:unifi.model}-%{NOTSPACE:unifi.firmware}: %{DATA:process.name}: %{GREEDYDATA:unifi.access_point.message}'
+        # Fallback with PID: just extract process info
+        - '^.*: %{DATA:process.name}\[%{NUMBER:process.pid:int}\](?:\[%{NUMBER}\])?: %{GREEDYDATA:unifi.access_point.message}'
+        # Fallback without PID: just extract process info
+        - '^.*: %{DATA:process.name}: %{GREEDYDATA:unifi.access_point.message}'
+        # Final fallback: entire message as AP message
+        - '^%{GREEDYDATA:unifi.access_point.message}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'access_point'"
+
+  # ACCESS POINT EVENT EXTRACTION - Client connection events
+  - grok:
+      field: unifi.access_point.message
+      patterns:
+        # AP-STA-CONNECTED: interface: AP-STA-CONNECTED mac
+        - '^%{NOTSPACE:observer.ingress.interface.name}: AP-STA-CONNECTED %{MAC:source.mac}'
+        # AP-STA-DISCONNECTED: interface: AP-STA-DISCONNECTED mac
+        - '^%{NOTSPACE:observer.ingress.interface.name}: AP-STA-DISCONNECTED %{MAC:source.mac}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message != null && (ctx.unifi.access_point.message.contains('AP-STA-CONNECTED') || ctx.unifi.access_point.message.contains('AP-STA-DISCONNECTED'))"
+
+  # ACCESS POINT EVENT EXTRACTION - wevent custom events (JOIN, LEAVE, IP)
+  - grok:
+      field: unifi.access_point.message
+      patterns:
+        # EVENT_STA_JOIN: interface: mac / aid
+        - '^wevent\.ubnt_custom_event\(\): EVENT_STA_JOIN %{NOTSPACE:observer.ingress.interface.name}: %{MAC:source.mac} / %{NUMBER:unifi.access_point.association_id:int}'
+        # EVENT_STA_LEAVE: interface: mac / aid
+        - '^wevent\.ubnt_custom_event\(\): EVENT_STA_LEAVE %{NOTSPACE:observer.ingress.interface.name}: %{MAC:source.mac} / %{NUMBER:unifi.access_point.association_id:int}'
+        # EVENT_STA_IP: interface: mac / ip
+        - '^wevent\.ubnt_custom_event\(\): EVENT_STA_IP %{NOTSPACE:observer.ingress.interface.name}: %{MAC:source.mac} / %{IP:source.ip}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message != null && ctx.unifi.access_point.message.contains('wevent.ubnt_custom_event()')"
+
+  # ACCESS POINT EVENT EXTRACTION - IEEE 802.11 association and authentication
+  - grok:
+      field: unifi.access_point.message
+      patterns:
+        # IEEE 802.11: associated (aid N)
+        - '^%{NOTSPACE:observer.ingress.interface.name}: STA %{MAC:source.mac} IEEE 802\.11: associated \(aid %{NUMBER:unifi.access_point.association_id:int}\)'
+        # IEEE 802.11: disassociated
+        - '^%{NOTSPACE:observer.ingress.interface.name}: STA %{MAC:source.mac} IEEE 802\.11: disassociated'
+        # IEEE 802.11: authentication OK
+        - '^%{NOTSPACE:observer.ingress.interface.name}: STA %{MAC:source.mac} IEEE 802\.11: authentication OK'
+        # IEEE 802.11: binding station to interface
+        - '^%{NOTSPACE:observer.ingress.interface.name}: STA %{MAC:source.mac} IEEE 802\.11: binding station to interface'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message != null && ctx.unifi.access_point.message.contains('IEEE 802.11')"
+
+  # ACCESS POINT EVENT EXTRACTION - IEEE 802.1X authentication
+  - grok:
+      field: unifi.access_point.message
+      patterns:
+        # IEEE 802.1X: start authentication
+        - '^%{NOTSPACE:observer.ingress.interface.name}: STA %{MAC:source.mac} IEEE 802\.1X: start authentication'
+        # IEEE 802.1X: authenticated
+        - '^%{NOTSPACE:observer.ingress.interface.name}: STA %{MAC:source.mac} IEEE 802\.1X: authenticated'
+        # IEEE 802.1X: authorizing port
+        - '^%{NOTSPACE:observer.ingress.interface.name}: STA %{MAC:source.mac} IEEE 802\.1X: authorizing port'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message != null && ctx.unifi.access_point.message.contains('IEEE 802.1X')"
+
+  # ACCESS POINT EVENT EXTRACTION - WPA authorization
+  - grok:
+      field: unifi.access_point.message
+      patterns:
+        # WPA: authorized
+        - '^%{NOTSPACE:observer.ingress.interface.name}: STA %{MAC:source.mac} WPA: authorized'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message != null && ctx.unifi.access_point.message.contains('WPA: authorized')"
+
+  # ACCESS POINT EVENT EXTRACTION - UniFi roaming events
+  - grok:
+      field: unifi.access_point.message
+      patterns:
+        # UBNT ROAM sent: STA=mac CurrentAP=bssid
+        - '^%{NOTSPACE:observer.ingress.interface.name}: STA %{MAC:source.mac} WPA: %{NOTSPACE}: UBNT ROAM: STA=%{MAC} CurrentAP=%{MAC:unifi.access_point.current_bssid}'
+        # UBNT ROAM received: Receive UBNT_ROAM from bssid
+        - '^%{NOTSPACE:observer.ingress.interface.name}: STA %{MAC:source.mac} WPA: %{NOTSPACE}: Receive UBNT_ROAM from %{MAC:unifi.access_point.source_bssid}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message != null && ctx.unifi.access_point.message.contains('UBNT')"
+
+  # ACCESS POINT EVENT EXTRACTION - VLAN assignment from kernel logs
+  - grok:
+      field: unifi.access_point.message
+      patterns:
+        # wlan: vap-N(interface):node[mac] set hw append vlan VLAN_ID
+        - '^wlan: \[%{NUMBER}\:%{WORD}\:%{WORD}\] \[%{WORD}\] vap-%{NUMBER}\(%{NOTSPACE:observer.ingress.interface.name}\):node\[%{MAC:source.mac}\] set hw append vlan %{NUMBER:network.vlan.id:int}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message != null && ctx.process?.name == 'kernel' && ctx.unifi.access_point.message.contains('set hw append vlan')"
+
+  # ACCESS POINT EVENT EXTRACTION - STA-TRACKER JSON events
+  - json:
+      field: unifi.access_point.message
+      target_field: unifi.access_point.sta_tracker
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message != null && ctx.unifi.access_point.message.contains('[STA-TRACKER]')"
+
+  # Extract MAC address from STA-TRACKER JSON
+  - set:
+      field: source.mac
+      value: "{{unifi.access_point.sta_tracker.mac}}"
+      ignore_failure: true
+      if: "ctx.unifi?.access_point?.sta_tracker?.mac != null"
+
+  # Extract VLAN from STA-TRACKER vap field (e.g., wifi2ap10 -> VLAN 10)
+  - grok:
+      field: unifi.access_point.sta_tracker.vap
+      patterns:
+        - '^wifi%{NUMBER}ap%{NUMBER:network.vlan.id:int}'
+      ignore_failure: true
+      if: "ctx.unifi?.access_point?.sta_tracker?.vap != null && ctx.network?.vlan?.id == null"
+
+  # ECS EVENT CATEGORIZATION - Connection events
+  - set:
+      field: event.category
+      value: ["network"]
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.source?.mac != null"
+
+  - set:
+      field: event.type
+      value: ["connection", "start"]
+      if: "ctx.unifi?.device_type == 'access_point' && (ctx.unifi?.access_point?.message?.contains('AP-STA-CONNECTED') || ctx.unifi?.access_point?.message?.contains('EVENT_STA_JOIN') || ctx.unifi?.access_point?.message?.contains('IEEE 802.11: associated'))"
+
+  - set:
+      field: event.type
+      value: ["connection", "end"]
+      if: "ctx.unifi?.device_type == 'access_point' && (ctx.unifi?.access_point?.message?.contains('AP-STA-DISCONNECTED') || ctx.unifi?.access_point?.message?.contains('EVENT_STA_LEAVE') || ctx.unifi?.access_point?.message?.contains('IEEE 802.11: disassociated'))"
+
+  - set:
+      field: event.type
+      value: ["info"]
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('EVENT_STA_IP')"
+
+  # ECS EVENT CATEGORIZATION - Authentication events
+  - append:
+      field: event.category
+      value: "authentication"
+      if: "ctx.unifi?.device_type == 'access_point' && (ctx.unifi?.access_point?.message?.contains('IEEE 802.1X') || ctx.unifi?.access_point?.message?.contains('WPA: authorized'))"
+
+  - set:
+      field: event.type
+      value: ["start"]
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('start authentication')"
+
+  - set:
+      field: event.type
+      value: ["end"]
+      if: "ctx.unifi?.device_type == 'access_point' && (ctx.unifi?.access_point?.message?.contains('authenticated') || ctx.unifi?.access_point?.message?.contains('WPA: authorized'))"
+
+  - set:
+      field: event.outcome
+      value: "success"
+      if: "ctx.unifi?.device_type == 'access_point' && (ctx.unifi?.access_point?.message?.contains('authenticated') || ctx.unifi?.access_point?.message?.contains('authorized') || ctx.unifi?.access_point?.message?.contains('authentication OK') || ctx.unifi?.access_point?.message?.contains('AP-STA-CONNECTED'))"
+
+  - set:
+      field: event.outcome
+      value: "failure"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.sta_tracker?.event_type == 'failure'"
+
+  # ECS EVENT ACTION - Set specific action based on log content
+  - set:
+      field: event.action
+      value: "client-connected"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('AP-STA-CONNECTED')"
+
+  - set:
+      field: event.action
+      value: "client-disconnected"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('AP-STA-DISCONNECTED')"
+
+  - set:
+      field: event.action
+      value: "client-joined"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('EVENT_STA_JOIN')"
+
+  - set:
+      field: event.action
+      value: "client-left"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('EVENT_STA_LEAVE')"
+
+  - set:
+      field: event.action
+      value: "client-ip-assigned"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('EVENT_STA_IP')"
+
+  - set:
+      field: event.action
+      value: "client-associated"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('IEEE 802.11: associated')"
+
+  - set:
+      field: event.action
+      value: "client-disassociated"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('IEEE 802.11: disassociated')"
+
+  - set:
+      field: event.action
+      value: "client-authenticated"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('IEEE 802.1X: authenticated')"
+
+  - set:
+      field: event.action
+      value: "client-authorized"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('WPA: authorized')"
+
+  - set:
+      field: event.action
+      value: "client-roaming"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('UBNT ROAM')"
+
+  - set:
+      field: event.action
+      value: "vlan-assigned"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.unifi?.access_point?.message?.contains('set hw append vlan')"
+
+  # SWITCH PARSING - Enhanced parsing for various switch log types
+  - grok:
+      field: message
+      patterns:
+        # Full format with device info and process: timestamp hostname device_id,model-firmware: process[pid]: message
+        - '^%{DATA} %{NOTSPACE:unifi.device_name} %{NOTSPACE:unifi.device_id},%{NOTSPACE:unifi.model}-%{NOTSPACE:unifi.firmware}: %{DATA:process.name}(?:\[%{NUMBER:process.pid:int}\])?: %{GREEDYDATA:unifi.switch.message}'
+        # Device info without process name (INF-DB, MCA-DB logs): timestamp hostname device_id,model-firmware: message
+        - '^%{DATA} %{NOTSPACE:unifi.device_name} %{NOTSPACE:unifi.device_id},%{NOTSPACE:unifi.model}-%{NOTSPACE:unifi.firmware}: %{GREEDYDATA:unifi.switch.message}'
+        # Format without device info: process[pid]: message
+        - '^%{DATA:process.name}(?:\[%{NUMBER:process.pid:int}\])?: %{GREEDYDATA:unifi.switch.message}'
+        # Fallback: entire message
+        - '^%{GREEDYDATA:unifi.switch.message}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'switch'"
+
+  # Extract structured switch event details - Generic parsers for common patterns
+
+  # Pattern 1: Function-call style logs (mcad, cfgmtd, mca-monitor, ubntbox, etc.)
+  # Format: component: process[pid]: module.function(): message
+  - grok:
+      field: unifi.switch.message
+      patterns:
+        - '^%{DATA:unifi.switch.component}: %{DATA}(?:\[%{NUMBER}\])?: %{DATA:unifi.switch.module}\.%{DATA:unifi.switch.function}\(\): %{GREEDYDATA:unifi.switch.event.message}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'switch' && ctx.unifi?.switch?.message != null && ctx.unifi.switch.message.contains('(): ')"
+
+  # Pattern 2: Component-event style logs (switch subsystems: TRAPMGR, FDB, UBNT_HAL, etc.)
+  # Format: component: subsystem: event_type: details
+  - grok:
+      field: unifi.switch.message
+      patterns:
+        - '^%{DATA:unifi.switch.component}: %{DATA:unifi.switch.subsystem}: %{DATA:unifi.switch.event.type}: %{GREEDYDATA:unifi.switch.event.message}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'switch' && ctx.unifi?.switch?.message != null"
+
+  # Pattern 3: Database-style logs (MCA-DB, INF-DB)
+  # Format: COMPONENT-DB: action message
+  - grok:
+      field: unifi.switch.message
+      patterns:
+        - '^%{DATA:unifi.switch.component}-DB: %{GREEDYDATA:unifi.switch.event.message}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'switch' && ctx.unifi?.switch?.message != null && ctx.unifi.switch.message.contains('-DB: ')"
+
+  # CONSOLE PARSING - Use observer.product to determine parsing strategy
+
+  # Parse UniFi Protect (format: timestamp IP timestamp hostname CEF...)
+  - dissect:
+      field: message
+      pattern: "%{} %{} %{} %{unifi.device_name} %{_temp_cef_data}"
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'console' && ctx.observer?.product == 'UniFi Protect Application'"
+
+  # Parse UniFi Network (format: timestamp hostname CEF...)
+  - dissect:
+      field: message
+      pattern: "%{} %{unifi.device_name} %{_temp_cef_data}"
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'console' && ctx._temp_cef_data == null && ctx.observer?.product == 'UniFi Network Application'"
+
+  # Parse UniFi OS (format: timestamp hostname CEF...)
+  - dissect:
+      field: message
+      pattern: "%{} %{unifi.device_name} %{_temp_cef_data}"
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'console' && ctx._temp_cef_data == null && ctx.observer?.product == 'UniFi OS'"
+
+  # Parse CEF header - 7-field format (UniFi Network with event_name)
+  - dissect:
+      field: _temp_cef_data
+      pattern: "CEF:0|%{unifi.console.vendor}|%{unifi.console.product}|%{unifi.console.version}|%{unifi.console.event_id}|%{unifi.console.event_name}|%{unifi.console.severity}|%{unifi.console.extensions}"
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'console' && ctx._temp_cef_data != null && ctx.unifi?.console?.extensions == null && ctx.observer?.product == 'UniFi Network Application'"
+
+  # Parse CEF header - 6-field format (UniFi OS, UniFi Protect without event_name)
+  - dissect:
+      field: _temp_cef_data
+      pattern: "CEF:0|%{unifi.console.vendor}|%{unifi.console.product}|%{unifi.console.version}|%{unifi.console.event_id}|%{unifi.console.severity}|%{unifi.console.extensions}"
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'console' && ctx._temp_cef_data != null && ctx.unifi?.console?.extensions == null && (ctx.observer?.product == 'UniFi OS' || ctx.observer?.product == 'UniFi Protect Application')"
+
+  # Clean up temp field
+  - remove:
+      field: _temp_cef_data
+      ignore_missing: true
+
+  # Extract CEF extension fields from console logs
+  # Use pattern matching to detect next key (starts with lowercase letter followed by =)
+  - kv:
+      field: unifi.console.extensions
+      field_split: ' (?=[a-z]+=|UNIFI)'
+      value_split: '='
+      target_field: unifi.console.fields
+      ignore_missing: true
+      ignore_failure: true
+      if: "ctx.unifi?.console?.extensions != null"
+
+  # Fix truncated multi-word device names - extract based on event type
+  # For disconnect events (401): extract UNIFIlastConnectedToDeviceName
+  - grok:
+      field: unifi.console.extensions
+      patterns:
+        - '.*UNIFIlastConnectedToDeviceName=(?<_temp_device_name>(?:(?!(?:\s+UNIFI|\s+[a-z]+=)).)+)'
+      ignore_failure: true
+      if: "ctx.unifi?.console?.event_id == '401' && ctx.unifi?.console?.extensions != null && ctx.unifi.console.extensions.contains('UNIFIlastConnectedToDeviceName=')"
+  - set:
+      field: unifi.console.device.name
+      copy_from: _temp_device_name
+      ignore_empty_value: true
+      override: true
+      if: "ctx._temp_device_name != null"
+  - remove:
+      field: _temp_device_name
+      ignore_missing: true
+
+  # For connect events (400) and roam events (402): extract UNIFIconnectedToDeviceName
+  - grok:
+      field: unifi.console.extensions
+      patterns:
+        - 'UNIFIconnectedToDeviceName=(?<_temp_device_name>[^\s]+(?:\s+[^\s]+)*?)\s+UNIFI'
+      ignore_failure: true
+      if: "(ctx.unifi?.console?.event_id == '400' || ctx.unifi?.console?.event_id == '402') && ctx.unifi?.console?.extensions != null && ctx.unifi.console.extensions.contains('UNIFIconnectedToDeviceName=')"
+  - set:
+      field: unifi.console.device.name
+      copy_from: _temp_device_name
+      ignore_empty_value: true
+      override: true
+      if: "ctx._temp_device_name != null"
+  - remove:
+      field: _temp_device_name
+      ignore_missing: true
+
+  # Extract specific console fields from CEF extensions
+  - set:
+      field: unifi.console.client.mac
+      copy_from: unifi.console.fields.UNIFIclientMac
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIclientMac != null"
+  - set:
+      field: unifi.console.client.ip
+      copy_from: unifi.console.fields.UNIFIclientIp
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIclientIp != null"
+  - set:
+      field: unifi.console.client.alias
+      copy_from: unifi.console.fields.UNIFIclientAlias
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIclientAlias != null"
+  - set:
+      field: unifi.console.client.hostname
+      copy_from: unifi.console.fields.UNIFIclientHostname
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIclientHostname != null"
+  - set:
+      field: unifi.console.wifi.ssid
+      copy_from: unifi.console.fields.UNIFIwifiName
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIwifiName != null"
+  - set:
+      field: unifi.console.wifi.channel
+      copy_from: unifi.console.fields.UNIFIwifiChannel
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIwifiChannel != null"
+  - convert:
+      field: unifi.console.wifi.channel
+      type: integer
+      ignore_missing: true
+      ignore_failure: true
+  - set:
+      field: unifi.console.wifi.rssi
+      copy_from: unifi.console.fields.UNIFIWiFiRssi
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIWiFiRssi != null"
+  - convert:
+      field: unifi.console.wifi.rssi
+      type: integer
+      ignore_missing: true
+      ignore_failure: true
+  - set:
+      field: unifi.console.wifi.band
+      copy_from: unifi.console.fields.UNIFIwifiBand
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIwifiBand != null"
+  - set:
+      field: unifi.console.wifi.channel_width
+      copy_from: unifi.console.fields.UNIFIwifiChannelWidth
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIwifiChannelWidth != null"
+  - convert:
+      field: unifi.console.wifi.channel_width
+      type: integer
+      ignore_missing: true
+      ignore_failure: true
+  - set:
+      field: unifi.console.device.name
+      copy_from: unifi.console.fields.UNIFIconnectedToDeviceName
+      ignore_empty_value: true
+      override: false
+      if: "ctx.unifi?.console?.fields?.UNIFIconnectedToDeviceName != null"
+  - set:
+      field: unifi.console.device.ip
+      copy_from: unifi.console.fields.UNIFIconnectedToDeviceIp
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIconnectedToDeviceIp != null"
+  - set:
+      field: unifi.console.device.mac
+      copy_from: unifi.console.fields.UNIFIconnectedToDeviceMac
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIconnectedToDeviceMac != null"
+  - set:
+      field: unifi.console.device.model
+      copy_from: unifi.console.fields.UNIFIconnectedToDeviceModel
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIconnectedToDeviceModel != null"
+  - set:
+      field: unifi.console.device.version
+      copy_from: unifi.console.fields.UNIFIconnectedToDeviceVersion
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIconnectedToDeviceVersion != null"
+  - set:
+      field: unifi.console.network.name
+      copy_from: unifi.console.fields.UNIFInetworkName
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFInetworkName != null"
+  - set:
+      field: unifi.console.network.vlan
+      copy_from: unifi.console.fields.UNIFInetworkVlan
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFInetworkVlan != null"
+  - convert:
+      field: unifi.console.network.vlan
+      type: integer
+      ignore_missing: true
+      ignore_failure: true
+  - set:
+      field: unifi.console.network.subnet
+      copy_from: unifi.console.fields.UNIFInetworkSubnet
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFInetworkSubnet != null"
+  - set:
+      field: unifi.console.session.duration
+      copy_from: unifi.console.fields.UNIFIduration
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIduration != null"
+  - set:
+      field: unifi.console.usage.download
+      copy_from: unifi.console.fields.UNIFIusageDown
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIusageDown != null"
+  - set:
+      field: unifi.console.usage.upload
+      copy_from: unifi.console.fields.UNIFIusageUp
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIusageUp != null"
+  - set:
+      field: unifi.console.auth.method
+      copy_from: unifi.console.fields.UNIFIauthMethod
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIauthMethod != null"
+  - set:
+      field: unifi.console.admin.name
+      copy_from: unifi.console.fields.UNIFIadmin
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIadmin != null"
+  - set:
+      field: unifi.console.access.method
+      copy_from: unifi.console.fields.UNIFIaccessMethod
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIaccessMethod != null"
+  - set:
+      field: unifi.console.source.ip
+      copy_from: unifi.console.fields.src
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.src != null"
+  - set:
+      field: unifi.console.user
+      copy_from: unifi.console.fields.suser
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.suser != null"
+  - set:
+      field: unifi.console.host
+      copy_from: unifi.console.fields.UNIFIhost
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIhost != null"
+  - set:
+      field: unifi.console.category
+      copy_from: unifi.console.fields.UNIFIcategory
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIcategory != null"
+  - set:
+      field: unifi.console.subcategory
+      copy_from: unifi.console.fields.UNIFIsubCategory
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIsubCategory != null"
+  - set:
+      field: unifi.console.destination.ip
+      copy_from: unifi.console.fields.dst
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.dst != null"
+  - set:
+      field: unifi.console.source.port
+      copy_from: unifi.console.fields.spt
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.spt != null"
+  - set:
+      field: unifi.console.destination.port
+      copy_from: unifi.console.fields.dpt
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.dpt != null"
+  - set:
+      field: unifi.console.network.transport
+      copy_from: unifi.console.fields.proto
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.proto != null"
+  - set:
+      field: unifi.console.ips.risk
+      copy_from: unifi.console.fields.UNIFIrisk
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIrisk != null"
+  - set:
+      field: unifi.console.ips.signature
+      copy_from: unifi.console.fields.UNIFIipsSignature
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIipsSignature != null"
+  - set:
+      field: unifi.console.ips.signature_id
+      copy_from: unifi.console.fields.UNIFIipsSignatureId
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIipsSignatureId != null"
+  - set:
+      field: unifi.console.ips.session_id
+      copy_from: unifi.console.fields.UNIFIipsSessionId
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.fields?.UNIFIipsSessionId != null"
+
+  # Extract message from CEF extensions
+  - grok:
+      field: unifi.console.extensions
+      patterns:
+        - '.*msg=%{GREEDYDATA:unifi.console.message}'
+      ignore_missing: true
+      ignore_failure: true
+      if: "ctx.unifi?.console?.extensions != null"
+
+  # Map console fields to common field names for unified querying
+  - set:
+      field: unifi.firmware
+      copy_from: unifi.console.version
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.version != null && ctx.unifi?.firmware == null"
+  - set:
+      field: unifi.device_name
+      copy_from: unifi.console.device.name
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.device?.name != null && ctx.unifi?.device_name == null"
+  - set:
+      field: unifi.model
+      copy_from: unifi.console.device.model
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.device?.model != null && ctx.unifi?.model == null"
+  - set:
+      field: source.ip
+      copy_from: unifi.console.source.ip
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.source?.ip != null && ctx.source?.ip == null"
+  - set:
+      field: source.mac
+      copy_from: unifi.console.client.mac
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.client?.mac != null && ctx.source?.mac == null"
+  - set:
+      field: destination.ip
+      copy_from: unifi.console.client.ip
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.client?.ip != null && ctx.destination?.ip == null"
+  - set:
+      field: destination.ip
+      copy_from: unifi.console.destination.ip
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.destination?.ip != null && ctx.destination?.ip == null"
+  - set:
+      field: source.port
+      copy_from: unifi.console.source.port
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.source?.port != null && ctx.source?.port == null"
+  - set:
+      field: destination.port
+      copy_from: unifi.console.destination.port
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.destination?.port != null && ctx.destination?.port == null"
+  - set:
+      field: network.transport
+      copy_from: unifi.console.network.transport
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.network?.transport != null && ctx.network?.transport == null"
+  - set:
+      field: rule.name
+      copy_from: unifi.console.ips.signature
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.ips?.signature != null && ctx.rule?.name == null"
+  - set:
+      field: rule.id
+      copy_from: unifi.console.ips.signature_id
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.ips?.signature_id != null && ctx.rule?.id == null"
+  - set:
+      field: user.name
+      copy_from: unifi.console.admin.name
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.admin?.name != null && ctx.user?.name == null"
+  - set:
+      field: network.vlan.id
+      copy_from: unifi.console.network.vlan
+      ignore_empty_value: true
+      if: "ctx.unifi?.console?.network?.vlan != null && ctx.network?.vlan?.id == null"
+
+  # Event categorization for console IPS events
+  - set:
+      field: event.kind
+      value: "alert"
+      if: "ctx.unifi?.console?.event_id == '201'"
+  - set:
+      field: event.category
+      value: ["intrusion_detection"]
+      if: "ctx.unifi?.console?.event_id == '201'"
+  - set:
+      field: event.type
+      value: ["denied"]
+      if: "ctx.unifi?.console?.event_id == '201'"
+  - set:
+      field: event.action
+      value: "ips_blocked"
+      if: "ctx.unifi?.console?.event_id == '201'"
+
+  # FIREWALL PARSING - Network traffic logs
+  # First extract rule_id and description using dissect
+  - dissect:
+      field: message
+      pattern: "%{} [%{unifi.firewall.rule_id}] DESCR=\"%{unifi.firewall.description}\" %{}"
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'firewall' && ctx.message.contains('DESCR')"
+
+  # Then extract network fields
+  - grok:
+      field: message
+      patterns:
+        # Full pattern with all fields
+        - '.*SRC=%{IP:source.ip}.*DST=%{IP:destination.ip}.*PROTO=%{WORD:network.transport}.*SPT=%{NUMBER:source.port:int}.*DPT=%{NUMBER:destination.port:int}.*'
+        # Basic pattern without ports (for ICMP, etc.)
+        - '.*SRC=%{IP:source.ip}.*DST=%{IP:destination.ip}.*PROTO=%{WORD:network.transport}.*'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'firewall'"
+
+  # GATEWAY PARSING - Extract hostname and process info
+  - grok:
+      field: message
+      patterns:
+        # Gateway format with PID: timestamp hostname hostname process[pid]: message
+        - '^%{DATA} %{NOTSPACE:unifi.device_name} %{NOTSPACE} %{DATA:process.name}\[%{NUMBER:process.pid:int}\]: %{GREEDYDATA:unifi.gateway.message}'
+        # Gateway format without PID: timestamp hostname hostname process: message
+        - '^%{DATA} %{NOTSPACE:unifi.device_name} %{NOTSPACE} %{DATA:process.name}: %{GREEDYDATA:unifi.gateway.message}'
+        # Fallback with PID: process[pid]: message
+        - '^%{DATA:process.name}\[%{NUMBER:process.pid:int}\]: %{GREEDYDATA:unifi.gateway.message}'
+        # Fallback without PID: process: message
+        - '^%{DATA:process.name}: %{GREEDYDATA:unifi.gateway.message}'
+        # Final fallback: entire message
+        - '^%{GREEDYDATA:unifi.gateway.message}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'gateway'"
+
+  # Extract structured gateway event details - Generic parsers for common patterns
+
+  # Pattern 1: Speedtest results (linkcheck process)
+  # Drop all linkcheck lines except the final completion line
+  - drop:
+      if: "ctx.process?.name == 'linkcheck' && ctx.unifi?.gateway?.message != null && !ctx.unifi.gateway.message.contains('[info ] Completed:')"
+
+  # Extract speedtest download and upload speeds from completion line
+  - grok:
+      field: unifi.gateway.message
+      patterns:
+        - '^\[info \] Completed: Downlink %{NUMBER:unifi.gateway.speedtest.download_mbps:float} Mbps, Uplink %{NUMBER:unifi.gateway.speedtest.upload_mbps:float} Mbps'
+      ignore_failure: true
+      if: "ctx.process?.name == 'linkcheck' && ctx.unifi?.gateway?.message != null && ctx.unifi.gateway.message.contains('[info ] Completed:')"
+
+  # Pattern 2: Function-call style logs (mcad, ubios-udapi-server)
+  # Format: module.function(): message
+  - grok:
+      field: unifi.gateway.message
+      patterns:
+        - '^%{DATA:unifi.gateway.module}\.%{DATA:unifi.gateway.function}\(\): %{GREEDYDATA:unifi.gateway.event.message}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'gateway' && ctx.unifi?.gateway?.message != null && ctx.unifi.gateway.message.contains('(): ')"
+
+  # Pattern 3: Component-prefix style logs
+  # Format: component: message
+  - grok:
+      field: unifi.gateway.message
+      patterns:
+        - '^%{DATA:unifi.gateway.component}: %{GREEDYDATA:unifi.gateway.event.message}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'gateway' && ctx.unifi?.gateway?.message != null && ctx.unifi.gateway.message.contains(': ') && !ctx.unifi.gateway.message.contains('(): ')"
+
+  # FIREWALL PARSING - Network traffic and security logs
+  - grok:
+      field: message
+      patterns:
+        # Firewall traffic logs with rule information
+        - '^%{DATA} %{NOTSPACE:unifi.device_name} %{NOTSPACE:unifi.device_id},%{NOTSPACE:unifi.model}-%{NOTSPACE:unifi.firmware}: kernel: \[%{DATA:unifi.firewall.rule_id}\] %{DATA:unifi.firewall.rule_description} IN=%{DATA:unifi.firewall.in_interface} OUT=%{DATA:unifi.firewall.out_interface} (?:MAC=%{DATA:unifi.firewall.mac} )?SRC=%{IP:source.ip} DST=%{IP:destination.ip} LEN=%{NUMBER:unifi.firewall.packet_length:int} (?:TOS=%{DATA:unifi.firewall.tos} )?(?:PREC=%{DATA:unifi.firewall.precedence} )?TTL=%{NUMBER:unifi.firewall.ttl:int} ID=%{NUMBER:unifi.firewall.packet_id:int} (?:%{DATA:unifi.firewall.flags} )?PROTO=%{WORD:network.transport} SPT=%{NUMBER:source.port:int} DPT=%{NUMBER:destination.port:int}(?: WINDOW=%{NUMBER:unifi.firewall.window:int})?(?: RES=%{DATA:unifi.firewall.reserved})?(?: %{DATA:unifi.firewall.tcp_flags})?(?:%{GREEDYDATA})?'
+        # ICMP traffic logs
+        - '^%{DATA} %{NOTSPACE:unifi.device_name} %{NOTSPACE:unifi.device_id},%{NOTSPACE:unifi.model}-%{NOTSPACE:unifi.firmware}: kernel: \[%{DATA:unifi.firewall.rule_id}\] %{DATA:unifi.firewall.rule_description} IN=%{DATA:unifi.firewall.in_interface} OUT=%{DATA:unifi.firewall.out_interface} (?:MAC=%{DATA:unifi.firewall.mac} )?SRC=%{IP:source.ip} DST=%{IP:destination.ip} LEN=%{NUMBER:unifi.firewall.packet_length:int} (?:TOS=%{DATA:unifi.firewall.tos} )?(?:PREC=%{DATA:unifi.firewall.precedence} )?TTL=%{NUMBER:unifi.firewall.ttl:int} ID=%{NUMBER:unifi.firewall.packet_id:int} (?:%{DATA:unifi.firewall.flags} )?PROTO=%{WORD:network.transport} TYPE=%{NUMBER:unifi.firewall.icmp_type:int} CODE=%{NUMBER:unifi.firewall.icmp_code:int}(?:%{GREEDYDATA})?'
+        # Simplified firewall logs (fallback)
+        - '^%{DATA} %{NOTSPACE:unifi.device_name} %{NOTSPACE:unifi.device_id},%{NOTSPACE:unifi.model}-%{NOTSPACE:unifi.firmware}: kernel: \[%{DATA:unifi.firewall.rule_id}\] %{GREEDYDATA:unifi.firewall.message}'
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'gateway' && ctx.message != null && ctx.message.contains('kernel: [')"
+
+  # Extract additional firewall details from MAC field
+  - grok:
+      field: unifi.firewall.mac
+      patterns:
+        - '^%{MAC:source.mac}:%{MAC:destination.mac}:%{DATA:unifi.firewall.ether_type}'
+      ignore_failure: true
+      if: "ctx.unifi?.firewall?.mac != null"
+
+  # Parse TCP flags if present
+  - grok:
+      field: unifi.firewall.tcp_flags
+      patterns:
+        - '(?:URG|ACK|PSH|RST|SYN|FIN)+'
+      ignore_failure: true
+      if: "ctx.unifi?.firewall?.tcp_flags != null"
+
+  # Convert empty interface fields to null
+  - script:
+      lang: painless
+      source: |
+        if (ctx.unifi?.firewall?.in_interface != null && ctx.unifi.firewall.in_interface.trim().isEmpty()) {
+          ctx.unifi.firewall.in_interface = null;
+        }
+        if (ctx.unifi?.firewall?.out_interface != null && ctx.unifi.firewall.out_interface.trim().isEmpty()) {
+          ctx.unifi.firewall.out_interface = null;
+        }
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'gateway'"
+
+  # Set network transport to lowercase for ECS compliance
+  - lowercase:
+      field: network.transport
+      ignore_missing: true
+      if: "ctx.unifi?.device_type == 'gateway'"
+
+  # Set network direction based on interfaces
+  - set:
+      field: network.direction
+      value: "inbound"
+      if: "ctx.unifi?.firewall?.in_interface != null && ctx.unifi?.firewall?.out_interface == null"
+  - set:
+      field: network.direction
+      value: "outbound"
+      if: "ctx.unifi?.firewall?.in_interface == null && ctx.unifi?.firewall?.out_interface != null"
+  - set:
+      field: network.direction
+      value: "internal"
+      if: "ctx.unifi?.firewall?.in_interface != null && ctx.unifi?.firewall?.out_interface != null"
+
+  # Map gateway fields to common field names for unified querying
+  - set:
+      field: source.ip
+      copy_from: unifi.gateway.dhcp.client_ip
+      ignore_empty_value: true
+      if: "ctx.unifi?.gateway?.dhcp?.client_ip != null && ctx.source?.ip == null"
+  - set:
+      field: source.mac
+      copy_from: unifi.gateway.dhcp.client_mac
+      ignore_empty_value: true
+      if: "ctx.unifi?.gateway?.dhcp?.client_mac != null && ctx.source?.mac == null"
+  - set:
+      field: host.hostname
+      copy_from: unifi.gateway.dhcp.hostname
+      ignore_empty_value: true
+      if: "ctx.unifi?.gateway?.dhcp?.hostname != null && ctx.host?.hostname == null"
+  - set:
+      field: network.interface.name
+      copy_from: unifi.gateway.dhcp.interface
+      ignore_empty_value: true
+      if: "ctx.unifi?.gateway?.dhcp?.interface != null && ctx.network?.interface?.name == null"
+  - set:
+      field: user.name
+      copy_from: unifi.gateway.sudo.user
+      ignore_empty_value: true
+      if: "ctx.unifi?.gateway?.sudo?.user != null && ctx.user?.name == null"
+
+  # Map switch fields to ECS for unified querying and analysis
+
+  # Extract and map SSH connection details from dropbear logs
+  - grok:
+      field: unifi.switch.message
+      patterns:
+        - "^dropbear\\[%{NUMBER}\\]: Child connection from %{IP:source.ip}:%{NUMBER:source.port:int}$"
+        - "^dropbear\\[%{NUMBER}\\]: Password auth succeeded for '%{DATA:user.name}' from %{IP:source.ip}:%{NUMBER:source.port:int}$"
+        - "^dropbear\\[%{NUMBER}\\]: Exit \\(%{DATA:user.name}\\) from <%{IP:source.ip}:%{NUMBER:source.port:int}>:"
+      ignore_failure: true
+      if: "ctx.unifi?.device_type == 'switch' && ctx.unifi?.switch?.message != null && ctx.unifi.switch.message.contains('dropbear')"
+
+  # Set event categorization for SSH access
+  - set:
+      field: event.category
+      value: ["authentication"]
+      if: "ctx.unifi?.device_type == 'switch' && ctx.unifi?.switch?.message != null && ctx.unifi.switch.message.contains('Password auth succeeded')"
+  - set:
+      field: event.type
+      value: ["start"]
+      if: "ctx.unifi?.device_type == 'switch' && ctx.unifi?.switch?.message != null && ctx.unifi.switch.message.contains('Password auth succeeded')"
+  - set:
+      field: event.outcome
+      value: "success"
+      if: "ctx.unifi?.device_type == 'switch' && ctx.unifi?.switch?.message != null && ctx.unifi.switch.message.contains('Password auth succeeded')"
+  - set:
+      field: event.action
+      value: "ssh_login"
+      if: "ctx.unifi?.device_type == 'switch' && ctx.unifi?.switch?.message != null && ctx.unifi.switch.message.contains('Password auth succeeded')"
+
+  # Set event categorization for link state changes
+  - set:
+      field: event.category
+      value: ["network"]
+      if: "ctx.unifi?.device_type == 'switch' && ctx.unifi?.switch?.subsystem == 'TRAPMGR'"
+  - set:
+      field: event.type
+      value: ["info"]
+      if: "ctx.unifi?.device_type == 'switch' && ctx.unifi?.switch?.subsystem == 'TRAPMGR'"
+  - set:
+      field: event.action
+      value: "link_state_change"
+      if: "ctx.unifi?.device_type == 'switch' && ctx.unifi?.switch?.subsystem == 'TRAPMGR'"
+
+  # Map firewall fields to common field names for unified querying
+  - set:
+      field: network.interface.name
+      copy_from: unifi.firewall.in_interface
+      ignore_empty_value: true
+      if: "ctx.unifi?.firewall?.in_interface != null && ctx.network?.interface?.name == null"
+  - set:
+      field: rule.id
+      copy_from: unifi.firewall.rule_id
+      ignore_empty_value: true
+      if: "ctx.unifi?.firewall?.rule_id != null"
+  - set:
+      field: rule.description
+      copy_from: unifi.firewall.rule_description
+      ignore_empty_value: true
+      if: "ctx.unifi?.firewall?.rule_description != null"
+  - set:
+      field: network.bytes
+      copy_from: unifi.firewall.packet_length
+      ignore_empty_value: true
+      if: "ctx.unifi?.firewall?.packet_length != null"
+
+  # Set event categorization for firewall logs
+  - set:
+      field: event.category
+      value: ["network"]
+      if: "ctx.unifi?.firewall?.rule_id != null"
+  - set:
+      field: event.type
+      value: ["allowed"]
+      if: "ctx.unifi?.firewall?.rule_id != null && ctx.unifi?.firewall?.description != null && (ctx.unifi.firewall.description.contains('ACCEPT') || ctx.unifi.firewall.description.contains('allow') || ctx.unifi.firewall.description.contains('Allow'))"
+  - set:
+      field: event.type
+      value: ["denied"]
+      if: "ctx.unifi?.firewall?.rule_id != null && ctx.unifi?.firewall?.description != null && (ctx.unifi.firewall.description.contains('DROP') || ctx.unifi.firewall.description.contains('REJECT') || ctx.unifi.firewall.description.contains('deny'))"
+  - set:
+      field: event.action
+      value: "firewall_rule"
+      if: "ctx.unifi?.firewall?.rule_id != null"
+
+  # Note: event.module is managed by Fleet automatically
+
+  # Convert network transport to lowercase for ECS compliance
+  - lowercase:
+      field: network.transport
+      ignore_missing: true
+
+  # GeoIP enrichment for source IP addresses
+  - geoip:
+      field: source.ip
+      target_field: source.geo
+      ignore_missing: true
+      ignore_failure: true
+
+  # GeoIP enrichment for destination IP addresses
+  - geoip:
+      field: destination.ip
+      target_field: destination.geo
+      ignore_missing: true
+      ignore_failure: true
+
+  # Set default device type to unknown if no specific type was detected
+  - set:
+      field: unifi.device_type
+      value: "unknown"
+      if: "ctx.unifi?.device_type == null"
+
+  # Remove temporary fields
+  - remove:
+      field:
+        - unifi_raw_message
+        - unifi.console.extensions
+        - unifi.console.fields
+        - unifi.console.remainder
+      ignore_missing: true
+
+on_failure:
+  - set:
+      field: error.message
+      value: "Failed to parse UniFi log message: {{ _ingest.on_failure_message }}"
+  - set:
+      field: unifi.device_type
+      value: "unknown"

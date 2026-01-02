@@ -1,0 +1,6 @@
+# newer versions go on top
+- version: "0.1.0"
+  changes:
+    - description: Initial release of Ubiquiti UniFi integration for Elastic with syslog data stream. Includes automatic device type detection and parsing for Network (access points, switches, gateways, firewalls) and Protect devices with comprehensive ECS field mapping.
+      type: enhancement
+      link: https://github.com/elastic/integrations/pull/1

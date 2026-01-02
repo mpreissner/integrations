@@ -1,0 +1,22 @@
+- name: ecs.version
+  external: ecs
+- name: log.file.path
+  external: ecs
+- name: log.offset
+  description: Current log offset
+- name: log.level
+  external: ecs
+- name: message
+  external: ecs
+- name: event.original
+  external: ecs
+- name: source
+  external: ecs
+- name: destination
+  external: ecs
+- name: network
+  external: ecs
+- name: observer
+  external: ecs
+- name: process
+  external: ecs
