@@ -1,7 +1,7 @@
 format_version: 3.5.5
 name: unifi
 title: "Ubiquiti UniFi"
-version: 0.1.0
+version: 0.1.1
 source:
   license: "Apache-2.0"
 description: "Elastic Agent integration for Ubiquiti UniFi products including Network, Protect, and other UniFi ecosystem devices. Provides automatic device type detection and ECS field mapping for syslog data, with API monitoring support planned for future releases."

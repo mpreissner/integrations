@@ -1,0 +1,47 @@
+{
+    "attributes": {
+        "columns": [
+            "unifi.console.ips.risk",
+            "unifi.console.ips.signature",
+            "source.ip",
+            "destination.ip",
+            "network.transport",
+            "unifi.console.ips.signature_id"
+        ],
+        "description": "UniFi IPS (Intrusion Prevention System) detected events",
+        "hits": 0,
+        "kibanaSavedObjectMeta": {
+            "searchSourceJSON": {
+                "filter": [],
+                "highlightAll": true,
+                "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
+                "query": {
+                    "language": "kuery",
+                    "query": "data_stream.dataset: \"unifi.syslogs\" and unifi.console.ips.signature: *"
+                },
+                "version": true
+            }
+        },
+        "sort": [
+            [
+                "@timestamp",
+                "desc"
+            ]
+        ],
+        "title": "UniFi IPS Events",
+        "version": 1
+    },
+    "coreMigrationVersion": "8.2.1",
+    "id": "unifi-ips-events",
+    "migrationVersion": {
+        "search": "8.0.0"
+    },
+    "references": [
+        {
+            "id": "logs-unifi.syslogs-*",
+            "name": "kibanaSavedObjectMeta.searchSourceJSON.index",
+            "type": "index-pattern"
+        }
+    ],
+    "type": "search"
+}

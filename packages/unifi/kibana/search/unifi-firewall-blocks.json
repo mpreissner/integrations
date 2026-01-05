@@ -1,0 +1,47 @@
+{
+    "attributes": {
+        "columns": [
+            "unifi.firewall.rule_id",
+            "unifi.firewall.description",
+            "source.ip",
+            "destination.ip",
+            "network.transport",
+            "destination.port"
+        ],
+        "description": "UniFi firewall rule matches and blocked traffic",
+        "hits": 0,
+        "kibanaSavedObjectMeta": {
+            "searchSourceJSON": {
+                "filter": [],
+                "highlightAll": true,
+                "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
+                "query": {
+                    "language": "kuery",
+                    "query": "data_stream.dataset: \"unifi.syslogs\" and unifi.device_type: \"firewall\""
+                },
+                "version": true
+            }
+        },
+        "sort": [
+            [
+                "@timestamp",
+                "desc"
+            ]
+        ],
+        "title": "UniFi Firewall Blocks",
+        "version": 1
+    },
+    "coreMigrationVersion": "8.2.1",
+    "id": "unifi-firewall-blocks",
+    "migrationVersion": {
+        "search": "8.0.0"
+    },
+    "references": [
+        {
+            "id": "logs-unifi.syslogs-*",
+            "name": "kibanaSavedObjectMeta.searchSourceJSON.index",
+            "type": "index-pattern"
+        }
+    ],
+    "type": "search"
+}

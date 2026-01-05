@@ -1,0 +1,19 @@
+{
+    "attributes": {
+        "fieldAttrs": "{}",
+        "fieldFormatMap": "{}",
+        "fields": "[]",
+        "name": "logs-unifi.syslogs",
+        "runtimeFieldMap": "{}",
+        "sourceFilters": "[]",
+        "timeFieldName": "@timestamp",
+        "title": "logs-unifi.syslogs-*",
+        "typeMeta": "{}"
+    },
+    "id": "logs-unifi.syslogs-*",
+    "migrationVersion": {
+        "index-pattern": "8.0.0"
+    },
+    "references": [],
+    "type": "index-pattern"
+}

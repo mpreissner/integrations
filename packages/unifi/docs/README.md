@@ -11,7 +11,6 @@ This integration collects and parses logs from different UniFi device types:
 - **Gateways** (System/service logs)
 - **Firewalls** (Network traffic logs)
 - **Consoles** (UniFi OS CEF format logs)
-- **Protect** (Security cameras and doorbells)
 
 ## Features
 

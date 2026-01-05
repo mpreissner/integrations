@@ -1,0 +1,46 @@
+{
+    "attributes": {
+        "columns": [
+            "source.mac",
+            "unifi.access_point.sta_tracker.event_type",
+            "unifi.access_point.sta_tracker.assoc_status",
+            "unifi.device_id",
+            "observer.hostname"
+        ],
+        "description": "UniFi WiFi authentication and association failures",
+        "hits": 0,
+        "kibanaSavedObjectMeta": {
+            "searchSourceJSON": {
+                "filter": [],
+                "highlightAll": true,
+                "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
+                "query": {
+                    "language": "kuery",
+                    "query": "data_stream.dataset: \"unifi.syslogs\" and unifi.device_type: \"access_point\" and (unifi.access_point.sta_tracker.event_type: \"failure\" or message: *deauthenticat* or message: *disassociat*)"
+                },
+                "version": true
+            }
+        },
+        "sort": [
+            [
+                "@timestamp",
+                "desc"
+            ]
+        ],
+        "title": "UniFi WiFi Auth Failures",
+        "version": 1
+    },
+    "coreMigrationVersion": "8.2.1",
+    "id": "unifi-wifi-auth-failures",
+    "migrationVersion": {
+        "search": "8.0.0"
+    },
+    "references": [
+        {
+            "id": "logs-unifi.syslogs-*",
+            "name": "kibanaSavedObjectMeta.searchSourceJSON.index",
+            "type": "index-pattern"
+        }
+    ],
+    "type": "search"
+}
