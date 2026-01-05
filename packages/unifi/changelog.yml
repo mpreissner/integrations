@@ -1,4 +1,9 @@
 # newer versions go on top
+- version: "0.1.2"
+  changes:
+    - description: Fixed gateway device type detection to include kernel messages without PIDs
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
 - version: "0.1.1"
   changes:
     - description: Added Kibana data view and four saved searches (Firewall Blocks, IPS Events, WiFi Auth Failures, Link Status Changes) for common monitoring tasks
