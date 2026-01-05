@@ -90,11 +90,11 @@ processors:
       value: "firewall"
       if: "ctx.unifi?.device_type == null && ctx.message != null && ctx.message.contains('[') && (ctx.message.contains('PROTO=') || ctx.message.contains('SRC='))"
 
-  # Gateway: Standard syslog format with process[pid] pattern or kernel messages
+  # Gateway: Standard syslog format with process[pid] pattern or system processes
   - set:
       field: unifi.device_type
       value: "gateway"
-      if: "ctx.unifi?.device_type == null && ctx.message != null && ((ctx.message.contains('[') && ctx.message.contains(']:')) || ctx.message.contains(' kernel:'))"
+      if: "ctx.unifi?.device_type == null && ctx.message != null && ((ctx.message.contains('[') && ctx.message.contains(']:')) || ctx.message.contains(' kernel:') || ctx.message.contains(' systemd:') || ctx.message.contains(' sshd:') || ctx.message.contains(' cron:'))"
 
   # Unknown log types
   - set:
