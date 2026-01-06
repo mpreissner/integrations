@@ -998,10 +998,138 @@ processors:
       field: event.type
       value: ["denied"]
       if: "ctx.unifi?.firewall?.rule_id != null && ctx.unifi?.firewall?.description != null && (ctx.unifi.firewall.description.contains('DROP') || ctx.unifi.firewall.description.contains('REJECT') || ctx.unifi.firewall.description.contains('deny'))"
+
+  # Set granular firewall event.action based on rule outcome
+  - set:
+      field: event.action
+      value: "firewall_allow"
+      if: "ctx.unifi?.firewall?.rule_id != null && ctx.event?.type != null && ctx.event.type.contains('allowed')"
+  - set:
+      field: event.action
+      value: "firewall_deny"
+      if: "ctx.unifi?.firewall?.rule_id != null && ctx.event?.type != null && ctx.event.type.contains('denied')"
   - set:
       field: event.action
       value: "firewall_rule"
-      if: "ctx.unifi?.firewall?.rule_id != null"
+      if: "ctx.unifi?.firewall?.rule_id != null && ctx.event?.action == null"
+
+  # DNS EVENT CATEGORIZATION - dnsmasq queries
+  - set:
+      field: event.category
+      value: ["network"]
+      if: "ctx.process?.name == 'dnsmasq' && ctx.event?.category == null"
+  - set:
+      field: event.type
+      value: ["info"]
+      if: "ctx.process?.name == 'dnsmasq' && ctx.event?.type == null"
+  - set:
+      field: event.action
+      value: "dns_query"
+      if: "ctx.process?.name == 'dnsmasq'"
+
+  # DHCP EVENT CATEGORIZATION - dnsmasq-dhcp
+  - set:
+      field: event.category
+      value: ["network"]
+      if: "ctx.process?.name == 'dnsmasq-dhcp' && ctx.event?.category == null"
+  - set:
+      field: event.type
+      value: ["info"]
+      if: "ctx.process?.name == 'dnsmasq-dhcp' && ctx.event?.type == null"
+  - set:
+      field: event.action
+      value: "dhcp_lease"
+      if: "ctx.process?.name == 'dnsmasq-dhcp' && ctx.unifi?.gateway?.message != null && ctx.unifi.gateway.message.contains('DHCPACK')"
+  - set:
+      field: event.action
+      value: "dhcp_discover"
+      if: "ctx.process?.name == 'dnsmasq-dhcp' && ctx.unifi?.gateway?.message != null && ctx.unifi.gateway.message.contains('DHCPDISCOVER')"
+  - set:
+      field: event.action
+      value: "dhcp_request"
+      if: "ctx.process?.name == 'dnsmasq-dhcp' && ctx.unifi?.gateway?.message != null && ctx.unifi.gateway.message.contains('DHCPREQUEST')"
+  - set:
+      field: event.action
+      value: "dhcp_event"
+      if: "ctx.process?.name == 'dnsmasq-dhcp' && ctx.event?.action == null"
+
+  # VPN EVENT CATEGORIZATION - charon (IPsec/IKE daemon)
+  - set:
+      field: event.category
+      value: ["network"]
+      if: "ctx.process?.name == 'charon' && ctx.event?.category == null"
+  - set:
+      field: event.type
+      value: ["info"]
+      if: "ctx.process?.name == 'charon' && ctx.event?.type == null"
+  - set:
+      field: event.action
+      value: "vpn_connect"
+      if: "ctx.process?.name == 'charon' && ctx.unifi?.gateway?.message != null && (ctx.unifi.gateway.message.contains('CHILD_SA') && ctx.unifi.gateway.message.contains('established'))"
+  - set:
+      field: event.action
+      value: "vpn_disconnect"
+      if: "ctx.process?.name == 'charon' && ctx.unifi?.gateway?.message != null && ctx.unifi.gateway.message.contains('closing')"
+  - set:
+      field: event.action
+      value: "vpn_negotiation"
+      if: "ctx.process?.name == 'charon' && ctx.event?.action == null"
+
+  # RADIUS EVENT CATEGORIZATION - radiusd
+  - append:
+      field: event.category
+      value: "authentication"
+      if: "ctx.process?.name == 'radiusd'"
+  - set:
+      field: event.type
+      value: ["info"]
+      if: "ctx.process?.name == 'radiusd' && ctx.event?.type == null"
+  - set:
+      field: event.action
+      value: "radius_auth_success"
+      if: "ctx.process?.name == 'radiusd' && ctx.unifi?.gateway?.message != null && (ctx.unifi.gateway.message.contains('Access-Accept') || ctx.unifi.gateway.message.contains('Login OK'))"
+  - set:
+      field: event.action
+      value: "radius_auth_failure"
+      if: "ctx.process?.name == 'radiusd' && ctx.unifi?.gateway?.message != null && (ctx.unifi.gateway.message.contains('Access-Reject') || ctx.unifi.gateway.message.contains('Login incorrect'))"
+  - set:
+      field: event.action
+      value: "radius_event"
+      if: "ctx.process?.name == 'radiusd' && ctx.event?.action == null"
+
+  # SWITCH EVENT CATEGORIZATION - INF-DB inform messages
+  - set:
+      field: event.category
+      value: ["network"]
+      if: "ctx.process?.name == 'INF-DB' && ctx.event?.category == null"
+  - set:
+      field: event.type
+      value: ["info"]
+      if: "ctx.process?.name == 'INF-DB' && ctx.event?.type == null"
+  - set:
+      field: event.action
+      value: "switch_inform"
+      if: "ctx.process?.name == 'INF-DB'"
+
+  # ACCESS POINT OPERATIONAL EVENTS - hostapd, stamgr, etc.
+  - set:
+      field: event.action
+      value: "ap_client_handoff"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.process?.name == 'stamgr' && ctx.event?.action == null"
+  - set:
+      field: event.action
+      value: "ap_operational"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.process?.name == 'hostapd' && ctx.event?.action == null"
+  - set:
+      field: event.action
+      value: "ap_event"
+      if: "ctx.unifi?.device_type == 'access_point' && ctx.event?.action == null && ctx.event?.category == null"
+
+  # GATEWAY OPERATIONAL EVENTS - System daemons
+  - set:
+      field: event.action
+      value: "gateway_operational"
+      if: "ctx.unifi?.device_type == 'gateway' && ctx.event?.action == null && (ctx.process?.name == 'ubios-udapi-server' || ctx.process?.name == 'mcad' || ctx.process?.name == 'systemd' || ctx.process?.name == 'earlyoom')"
 
   # Note: event.module is managed by Fleet automatically
 
