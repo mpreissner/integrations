@@ -1,4 +1,20 @@
 # newer versions go on top
+- version: "0.1.6"
+  changes:
+    - description: Added UniFi Overview Dashboard with activity timeline, event type distribution, top firewall rules, and top active devices visualizations
+      type: enhancement
+      link: https://github.com/elastic/integrations/pull/1
+    - description: Enhanced firewall event.type detection to include additional block/deny keywords (block, Block, reject, Deny) for improved categorization of denied traffic
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+    - description: Removed saved searches that are not currently used by any dashboards
+      type: enhancement
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.1.5"
+  changes:
+    - description: Reserved version number (not released)
+      type: enhancement
+      link: https://github.com/elastic/integrations/pull/1
 - version: "0.1.4"
   changes:
     - description: Added granular event.action categorization for DNS queries, DHCP events, VPN connections, RADIUS authentication, switch operations, and AP/gateway operational logs. Firewall events now differentiate between allow/deny actions instead of generic firewall_rule.

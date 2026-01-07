@@ -997,7 +997,7 @@ processors:
   - set:
       field: event.type
       value: ["denied"]
-      if: "ctx.unifi?.firewall?.rule_id != null && ctx.unifi?.firewall?.description != null && (ctx.unifi.firewall.description.contains('DROP') || ctx.unifi.firewall.description.contains('REJECT') || ctx.unifi.firewall.description.contains('deny'))"
+      if: "ctx.unifi?.firewall?.rule_id != null && ctx.unifi?.firewall?.description != null && (ctx.unifi.firewall.description.contains('DROP') || ctx.unifi.firewall.description.contains('REJECT') || ctx.unifi.firewall.description.contains('deny') || ctx.unifi.firewall.description.contains('Deny') || ctx.unifi.firewall.description.contains('block') || ctx.unifi.firewall.description.contains('Block') || ctx.unifi.firewall.description.contains('reject'))"
 
   # Set granular firewall event.action based on rule outcome
   - set:
