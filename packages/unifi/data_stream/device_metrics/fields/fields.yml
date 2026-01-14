@@ -1,0 +1,175 @@
+- name: unifi.site
+  type: group
+  fields:
+    - name: name
+      type: keyword
+      description: UniFi site name
+- name: unifi.device
+  type: group
+  fields:
+    - name: type
+      type: keyword
+      description: UniFi device type (uap, usw, udm, uxg, usg)
+    - name: state
+      type: keyword
+      description: Device state code
+    - name: adopted
+      type: boolean
+      description: Whether device is adopted
+    - name: version
+      type: keyword
+      description: Firmware version
+    - name: satisfaction
+      type: long
+      description: Device satisfaction score (0-100)
+    - name: anomalies
+      type: long
+      description: Number of anomalies detected
+    - name: bytes
+      type: group
+      fields:
+        - name: total
+          type: long
+          metric_type: counter
+          description: Total bytes transferred
+        - name: rx
+          type: long
+          metric_type: counter
+          description: Bytes received
+        - name: tx
+          type: long
+          metric_type: counter
+          description: Bytes transmitted
+        - name: rate
+          type: double
+          metric_type: gauge
+          unit: byte
+          description: Current byte transfer rate
+        - name: daily
+          type: group
+          fields:
+            - name: total
+              type: long
+              metric_type: counter
+              description: Daily total bytes
+            - name: rx
+              type: long
+              metric_type: counter
+              description: Daily bytes received
+            - name: tx
+              type: long
+              metric_type: counter
+              description: Daily bytes transmitted
+    - name: clients
+      type: group
+      fields:
+        - name: total
+          type: long
+          metric_type: gauge
+          description: Total connected clients
+        - name: user
+          type: long
+          metric_type: gauge
+          description: User network clients
+        - name: guest
+          type: long
+          metric_type: gauge
+          description: Guest network clients
+        - name: wired
+          type: long
+          metric_type: gauge
+          description: Wired clients
+        - name: wireless
+          type: long
+          metric_type: gauge
+          description: Wireless clients
+    - name: system
+      type: group
+      fields:
+        - name: cpu
+          type: group
+          fields:
+            - name: pct
+              type: double
+              metric_type: gauge
+              unit: percent
+              description: CPU utilization percentage
+        - name: memory
+          type: group
+          fields:
+            - name: pct
+              type: double
+              metric_type: gauge
+              unit: percent
+              description: Memory utilization percentage
+        - name: uptime
+          type: long
+          metric_type: gauge
+          unit: s
+          description: System uptime in seconds
+        - name: temperature
+          type: double
+          metric_type: gauge
+          description: Device temperature (Celsius)
+        - name: load
+          type: group
+          fields:
+            - name: 1m
+              type: double
+              metric_type: gauge
+              description: 1-minute load average
+            - name: 5m
+              type: double
+              metric_type: gauge
+              description: 5-minute load average
+            - name: 15m
+              type: double
+              metric_type: gauge
+              description: 15-minute load average
+    - name: wan
+      type: group
+      fields:
+        - name: bytes
+          type: group
+          fields:
+            - name: rx
+              type: long
+              metric_type: counter
+              description: WAN bytes received
+            - name: tx
+              type: long
+              metric_type: counter
+              description: WAN bytes transmitted
+        - name: packets
+          type: group
+          fields:
+            - name: rx
+              type: long
+              metric_type: counter
+              description: WAN packets received
+            - name: tx
+              type: long
+              metric_type: counter
+              description: WAN packets transmitted
+    - name: lan
+      type: group
+      fields:
+        - name: bytes
+          type: group
+          fields:
+            - name: rx
+              type: long
+              metric_type: counter
+              description: LAN bytes received
+            - name: tx
+              type: long
+              metric_type: counter
+              description: LAN bytes transmitted
+    - name: fan
+      type: group
+      fields:
+        - name: level
+          type: long
+          metric_type: gauge
+          unit: percent
+          description: Fan level percentage

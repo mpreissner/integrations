@@ -1,0 +1,61 @@
+title: "UniFi Port Metrics"
+type: metrics
+streams:
+  - input: httpjson
+    title: UniFi Switch Port Metrics
+    description: Collect per-port metrics from UniFi switches
+    enabled: true
+    vars:
+      - name: controller_host
+        type: text
+        title: Controller Host
+        description: UniFi Controller IP address or hostname (without protocol)
+        required: true
+        show_user: true
+        default: 192.168.1.1
+      - name: controller_port
+        type: integer
+        title: Controller Port
+        description: UniFi Controller HTTPS port
+        required: true
+        show_user: true
+        default: 443
+      - name: api_key
+        type: password
+        title: API Key
+        description: UniFi Network Application API key
+        required: true
+        show_user: true
+        secret: true
+      - name: verify_ssl
+        type: bool
+        title: Verify SSL
+        description: Verify SSL certificate
+        required: true
+        show_user: true
+        default: false
+      - name: site_name
+        type: text
+        title: Site Name
+        description: UniFi site name to monitor
+        required: true
+        show_user: true
+        default: default
+      - name: collection_interval
+        type: text
+        title: Collection Interval
+        description: How often to poll for port metrics
+        required: true
+        show_user: true
+        default: 60s
+    template_path: stream.yml.hbs
+elasticsearch:
+  index_mode: time_series
+  index_template:
+    settings:
+      index:
+        mapping:
+          total_fields:
+            limit: 2000
+    mappings:
+      subobjects: false

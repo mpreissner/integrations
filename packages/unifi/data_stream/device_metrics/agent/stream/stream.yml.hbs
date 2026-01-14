@@ -1,0 +1,378 @@
+request.url: https://{{controller_host}}:{{controller_port}}/proxy/network/api/s/{{site_name}}/stat/device
+request.method: GET
+request.ssl.verification_mode: {{#if verify_ssl}}full{{else}}none{{/if}}
+request.timeout: 30s
+request.transforms:
+  - set:
+      target: header.X-API-KEY
+      value: {{api_key}}
+  - set:
+      target: header.Accept
+      value: application/json
+
+# Split the response data array into individual device documents
+response.split:
+  target: body.data
+  type: array
+  keep_parent: true
+
+# Response transforms to extract only needed fields and normalize names
+response.transforms:
+  # Site context
+  - set:
+      target: body.unifi_site_name
+      value: "{{site_name}}"
+  - set:
+      target: body.observer_host
+      value: "{{controller_host}}"
+
+  # Extract device identity (always present)
+  - set:
+      target: body.device_id
+      value: ".data._id"
+      value_type: json
+  - set:
+      target: body.device_mac
+      value: ".data.mac"
+      value_type: json
+  - set:
+      target: body.device_name
+      value: ".data.name"
+      value_type: json
+  - set:
+      target: body.device_type
+      value: ".data.type"
+      value_type: json
+  - set:
+      target: body.device_model
+      value: ".data.model"
+      value_type: json
+  - set:
+      target: body.device_ip
+      value: ".data.ip"
+      value_type: json
+  - set:
+      target: body.device_state
+      value: ".data.state"
+      value_type: json
+  - set:
+      target: body.device_adopted
+      value: ".data.adopted"
+      value_type: json
+  - set:
+      target: body.device_version
+      value: ".data.version"
+      value_type: json
+
+  # Core metrics
+  - set:
+      target: body.device_uptime
+      value: ".data.uptime"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_satisfaction
+      value: ".data.satisfaction"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_anomalies
+      value: ".data.anomalies"
+      value_type: json
+      fail_on_template_error: false
+
+  # Traffic counters (normalize hyphenated fields)
+  - set:
+      target: body.device_bytes_total
+      value: ".data.bytes"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_bytes_rx
+      value: ".data.rx_bytes"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_bytes_tx
+      value: ".data.tx_bytes"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_bytes_rate
+      value: ".data['bytes-r']"
+      value_type: json
+      fail_on_template_error: false
+
+  # Daily counters
+  - set:
+      target: body.device_bytes_daily_total
+      value: ".data['bytes-d']"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_bytes_daily_rx
+      value: ".data['rx_bytes-d']"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_bytes_daily_tx
+      value: ".data['tx_bytes-d']"
+      value_type: json
+      fail_on_template_error: false
+
+  # Client counts (normalize hyphenated fields)
+  - set:
+      target: body.device_clients_total
+      value: ".data.num_sta"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_clients_user
+      value: ".data['user-num_sta']"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_clients_guest
+      value: ".data['guest-num_sta']"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_clients_wired
+      value: ".data['lan-num_sta']"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_clients_wireless
+      value: ".data['wlan-num_sta']"
+      value_type: json
+      fail_on_template_error: false
+
+  # System stats (normalize hyphenated nested fields)
+  - set:
+      target: body.device_system_cpu
+      value: ".data['system-stats'].cpu"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_system_memory
+      value: ".data['system-stats'].mem"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_system_uptime
+      value: ".data.sys_stats.uptime"
+      value_type: json
+      fail_on_template_error: false
+
+  # Temperature
+  - set:
+      target: body.device_temperature
+      value: ".data.general_temperature"
+      value_type: json
+      fail_on_template_error: false
+
+  # Load averages (gateway/UDM)
+  - set:
+      target: body.device_load_1m
+      value: ".data.sys_stats.loadavg_1"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_load_5m
+      value: ".data.sys_stats.loadavg_5"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_load_15m
+      value: ".data.sys_stats.loadavg_15"
+      value_type: json
+      fail_on_template_error: false
+
+  # Gateway WAN/LAN stats (from stat.gw nested object)
+  - set:
+      target: body.device_wan_rx_bytes
+      value: ".data.stat.gw['wan-rx_bytes']"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_wan_tx_bytes
+      value: ".data.stat.gw['wan-tx_bytes']"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_wan_rx_packets
+      value: ".data.stat.gw['wan-rx_packets']"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_wan_tx_packets
+      value: ".data.stat.gw['wan-tx_packets']"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_lan_rx_bytes
+      value: ".data.stat.gw['lan-rx_bytes']"
+      value_type: json
+      fail_on_template_error: false
+  - set:
+      target: body.device_lan_tx_bytes
+      value: ".data.stat.gw['lan-tx_bytes']"
+      value_type: json
+      fail_on_template_error: false
+
+  # Switch specific
+  - set:
+      target: body.device_fan_level
+      value: ".data.fan_level"
+      value_type: json
+      fail_on_template_error: false
+
+  # Drop the raw data object - we've extracted what we need
+  - delete:
+      target: body.data
+  - delete:
+      target: body.meta
+
+# Collection interval
+interval: {{collection_interval}}
+
+# Retry configuration
+request.retry.max_attempts: 3
+request.retry.wait_min: 1s
+request.retry.wait_max: 60s
+
+# Processors to set ECS fields
+processors:
+  - add_fields:
+      target: ''
+      fields:
+        ecs.version: 8.11.0
+        event.dataset: unifi.device_metrics
+        event.module: unifi
+        event.kind: metric
+        observer.type: unifi-controller
+  - rename:
+      fields:
+        - from: device_id
+          to: device.id
+        - from: device_mac
+          to: device.mac
+        - from: device_name
+          to: device.name
+        - from: device_type
+          to: unifi.device.type
+        - from: device_model
+          to: device.model.name
+        - from: device_ip
+          to: host.ip
+        - from: device_state
+          to: unifi.device.state
+        - from: device_adopted
+          to: unifi.device.adopted
+        - from: device_version
+          to: unifi.device.version
+        - from: device_uptime
+          to: host.uptime
+        - from: device_satisfaction
+          to: unifi.device.satisfaction
+        - from: device_anomalies
+          to: unifi.device.anomalies
+        - from: device_bytes_total
+          to: unifi.device.bytes.total
+        - from: device_bytes_rx
+          to: unifi.device.bytes.rx
+        - from: device_bytes_tx
+          to: unifi.device.bytes.tx
+        - from: device_bytes_rate
+          to: unifi.device.bytes.rate
+        - from: device_bytes_daily_total
+          to: unifi.device.bytes.daily.total
+        - from: device_bytes_daily_rx
+          to: unifi.device.bytes.daily.rx
+        - from: device_bytes_daily_tx
+          to: unifi.device.bytes.daily.tx
+        - from: device_clients_total
+          to: unifi.device.clients.total
+        - from: device_clients_user
+          to: unifi.device.clients.user
+        - from: device_clients_guest
+          to: unifi.device.clients.guest
+        - from: device_clients_wired
+          to: unifi.device.clients.wired
+        - from: device_clients_wireless
+          to: unifi.device.clients.wireless
+        - from: device_system_cpu
+          to: unifi.device.system.cpu.pct
+        - from: device_system_memory
+          to: unifi.device.system.memory.pct
+        - from: device_system_uptime
+          to: unifi.device.system.uptime
+        - from: device_temperature
+          to: unifi.device.system.temperature
+        - from: device_load_1m
+          to: unifi.device.system.load.1m
+        - from: device_load_5m
+          to: unifi.device.system.load.5m
+        - from: device_load_15m
+          to: unifi.device.system.load.15m
+        - from: device_wan_rx_bytes
+          to: unifi.device.wan.bytes.rx
+        - from: device_wan_tx_bytes
+          to: unifi.device.wan.bytes.tx
+        - from: device_wan_rx_packets
+          to: unifi.device.wan.packets.rx
+        - from: device_wan_tx_packets
+          to: unifi.device.wan.packets.tx
+        - from: device_lan_rx_bytes
+          to: unifi.device.lan.bytes.rx
+        - from: device_lan_tx_bytes
+          to: unifi.device.lan.bytes.tx
+        - from: device_fan_level
+          to: unifi.device.fan.level
+        - from: unifi_site_name
+          to: unifi.site.name
+        - from: observer_host
+          to: observer.ip
+      ignore_missing: true
+  - convert:
+      fields:
+        - {from: host.ip, to: host.ip, type: ip}
+      ignore_missing: true
+  - add_fields:
+      target: host
+      fields:
+        mac: ["{{device.mac}}"]
+      when:
+        has_fields: ['device.mac']
+  - script:
+      lang: javascript
+      source: |
+        function process(event) {
+          // Map device type to ECS device.type
+          var unifiType = event.Get("unifi.device.type");
+          if (unifiType) {
+            var ecsType;
+            switch(unifiType) {
+              case "uap": ecsType = "access-point"; break;
+              case "usw": ecsType = "switch"; break;
+              case "udm":
+              case "uxg":
+              case "usg": ecsType = "gateway"; break;
+              default: ecsType = "unknown";
+            }
+            event.Put("device.type", ecsType);
+          }
+
+          // Convert string numbers to actual numbers
+          var cpuStr = event.Get("unifi.device.system.cpu.pct");
+          if (cpuStr && typeof cpuStr === "string") {
+            event.Put("unifi.device.system.cpu.pct", parseFloat(cpuStr));
+          }
+
+          var memStr = event.Get("unifi.device.system.memory.pct");
+          if (memStr && typeof memStr === "string") {
+            event.Put("unifi.device.system.memory.pct", parseFloat(memStr));
+          }
+
+          return event;
+        }

@@ -1,0 +1,97 @@
+request.url: https://{{controller_host}}:{{controller_port}}/proxy/network/api/s/{{site_name}}/stat/device
+request.method: GET
+request.ssl.verification_mode: {{#if verify_ssl}}full{{else}}none{{/if}}
+request.timeout: 30s
+request.transforms:
+  - set:
+      target: header.X-API-KEY
+      value: {{api_key}}
+  - set:
+      target: header.Accept
+      value: application/json
+
+response.split:
+  target: body.data
+  type: array
+
+response.transforms:
+  - set:
+      target: body.site_name
+      value: "{{site_name}}"
+  - set:
+      target: body.observer_host
+      value: "{{controller_host}}"
+
+interval: {{collection_interval}}
+request.retry.max_attempts: 3
+request.retry.wait_min: 1s
+
+processors:
+  - script:
+      lang: javascript
+      source: |
+        function process(event) {
+          var device = event.Get("data");
+          if (!device || device.type !== "uap" || !device.radio_table_stats) {
+            event.Cancel();
+            return;
+          }
+
+          var radios = device.radio_table_stats;
+          var radioEvents = [];
+
+          for (var i = 0; i < radios.length; i++) {
+            var radio = radios[i];
+            radioEvents.push({
+              "device": {"id": device._id, "mac": device.mac, "name": device.name, "type": "access-point"},
+              "unifi": {
+                "site": {"name": event.Get("site_name")},
+                "device": {"type": "uap"},
+                "radio": {
+                  "name": radio.name,
+                  "radio": radio.radio,
+                  "channel": radio.channel,
+                  "tx_power": radio.tx_power,
+                  "utilization": {
+                    "total": radio.cu_total,
+                    "self_rx": radio.cu_self_rx,
+                    "self_tx": radio.cu_self_tx
+                  },
+                  "clients": {"count": radio.num_sta},
+                  "satisfaction": radio.satisfaction,
+                  "state": radio.state
+                }
+              }
+            });
+          }
+
+          if (radioEvents.length > 0) event.Put("radio_events", radioEvents);
+          else event.Cancel();
+        }
+  - script:
+      lang: javascript
+      source: |
+        function process(event) {
+          var radioEvents = event.Get("radio_events");
+          if (!radioEvents || radioEvents.length === 0) {
+            event.Cancel();
+            return;
+          }
+          for (var key in radioEvents[0]) {
+            event.Put(key, radioEvents[0][key]);
+          }
+          if (radioEvents.length > 1) {
+            event.Put("radio_events", radioEvents.slice(1));
+          }
+        }
+  - add_fields:
+      target: ''
+      fields:
+        ecs.version: 8.11.0
+        event.dataset: unifi.radio_metrics
+        event.module: unifi
+        event.kind: metric
+        observer.type: unifi-controller
+  - drop_fields:
+      fields: [data, radio_events, site_name, observer_host]
+      ignore_missing: true

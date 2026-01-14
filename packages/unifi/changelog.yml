@@ -1,4 +1,73 @@
 # newer versions go on top
+- version: "0.2.11"
+  changes:
+    - description: Restructured metrics collection into 5 specialized data streams (device_metrics, port_metrics, radio_metrics, vap_metrics, client_metrics) to solve document drop issues caused by field count limits. Each stream now extracts only necessary fields (~50-150 per stream vs 2,876), normalizes hyphenated field names, and uses common ECS fields for cross-index queries. Removed old monolithic metrics data stream.
+      type: enhancement
+      link: https://github.com/elastic/integrations/pull/1
+    - description: Fixed field count limit issues where UniFi device documents exceeded Elasticsearch 1,000 field default limit, causing silent document drops
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+    - description: Fixed field type conflicts across device types by normalizing data per stream
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+    - description: Set client_metrics data stream to disabled by default due to high data volume (one document per client per interval)
+      type: enhancement
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.10"
+  changes:
+    - description: Testing TSDS dimension field with literal value to diagnose template issue
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.9"
+  changes:
+    - description: Fixed template value quoting in response transforms
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.8"
+  changes:
+    - description: Added dimension fields extraction in httpjson response transforms to fix TSDS routing errors
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.7"
+  changes:
+    - description: Simplified httpjson configuration to basic request without chain for debugging
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.6"
+  changes:
+    - description: Fixed httpjson template syntax to access split array item fields directly using [[.name]] instead of [[.last_response.body.name]]
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.5"
+  changes:
+    - description: Fixed template field references in chain step 1 and removed fail_on_template_error flags causing parsing errors
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.4"
+  changes:
+    - description: Added required top-level request.url field to httpjson configuration to resolve missing field error
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.3"
+  changes:
+    - description: Fixed httpjson configuration to remove invalid top-level request.url causing HTML response errors
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.2"
+  changes:
+    - description: Fixed invalid nested split configuration in metrics stream causing agent health issues
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.1"
+  changes:
+    - description: Fixed package manifest to include httpjson input type for metrics data stream
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.0"
+  changes:
+    - description: Added metrics data stream for UniFi Network Application with support for device performance metrics, port statistics, radio/VAP metrics, gateway WAN/LAN separation, PDU power monitoring, and optional client metrics. Uses official API key authentication for UniFiOS devices (UDM, UDR, UXG, UCG, UDW, Cloud Key Gen2+).
+      type: enhancement
+      link: https://github.com/elastic/integrations/pull/1
 - version: "0.1.6"
   changes:
     - description: Added UniFi Overview Dashboard with activity timeline, event type distribution, top firewall rules, and top active devices visualizations

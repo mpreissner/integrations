@@ -1,0 +1,88 @@
+request.url: https://{{controller_host}}:{{controller_port}}/proxy/network/api/s/{{site_name}}/stat/sta
+request.method: GET
+request.ssl.verification_mode: {{#if verify_ssl}}full{{else}}none{{/if}}
+request.timeout: 30s
+request.transforms:
+  - set:
+      target: header.X-API-KEY
+      value: {{api_key}}
+  - set:
+      target: header.Accept
+      value: application/json
+
+response.split:
+  target: body.data
+  type: array
+
+interval: {{collection_interval}}
+request.retry.max_attempts: 3
+
+processors:
+  - script:
+      lang: javascript
+      source: |
+        function process(event) {
+          var client = event.Get("data");
+          if (!client || !client.mac) {
+            event.Cancel();
+            return;
+          }
+
+          var unifi = {
+            "site": {"name": "{{site_name}}"},
+            "client": {
+              "mac": client.mac,
+              "ip": client.ip,
+              "hostname": client.hostname || client.name,
+              "is_wired": client.is_wired || false,
+              "is_guest": client.is_guest || false,
+              "network": {"name": client.network},
+              "bytes": {
+                "rx": (client["wired-rx_bytes"] || client.rx_bytes || 0),
+                "tx": (client["wired-tx_bytes"] || client.tx_bytes || 0)
+              },
+              "packets": {
+                "rx": (client["wired-rx_packets"] || client.rx_packets || 0),
+                "tx": (client["wired-tx_packets"] || client.tx_packets || 0)
+              },
+              "uptime": client.uptime,
+              "satisfaction": client.satisfaction
+            }
+          };
+
+          // WiFi-specific fields
+          if (!client.is_wired) {
+            unifi.client.wifi = {
+              "ssid": client.essid,
+              "bssid": client.bssid,
+              "radio": client.radio,
+              "channel": client.channel,
+              "rssi": client.rssi,
+              "signal": client.signal,
+              "noise": client.noise
+            };
+          }
+
+          // Wired-specific fields
+          if (client.is_wired) {
+            unifi.client.wired = {
+              "switch_mac": client.sw_mac,
+              "switch_port": client.sw_port
+            };
+          }
+
+          event.Put("unifi", unifi);
+          event.Put("client", {"mac": client.mac, "ip": client.ip});
+          event.Put("host", {"hostname": client.hostname || client.name});
+        }
+  - add_fields:
+      target: ''
+      fields:
+        ecs.version: 8.11.0
+        event.dataset: unifi.client_metrics
+        event.module: unifi
+        event.kind: metric
+        observer.type: unifi-controller
+  - drop_fields:
+      fields: [data]
+      ignore_missing: true

@@ -1,0 +1,55 @@
+title: "UniFi VAP Metrics"
+type: metrics
+streams:
+  - input: httpjson
+    title: UniFi WiFi SSID (VAP) Metrics
+    description: Collect per-SSID metrics from UniFi access points
+    enabled: true
+    vars:
+      - name: controller_host
+        type: text
+        title: Controller Host
+        required: true
+        show_user: true
+        default: 192.168.1.1
+      - name: controller_port
+        type: integer
+        title: Controller Port
+        required: true
+        show_user: true
+        default: 443
+      - name: api_key
+        type: password
+        title: API Key
+        required: true
+        show_user: true
+        secret: true
+      - name: verify_ssl
+        type: bool
+        title: Verify SSL
+        required: true
+        show_user: true
+        default: false
+      - name: site_name
+        type: text
+        title: Site Name
+        required: true
+        show_user: true
+        default: default
+      - name: collection_interval
+        type: text
+        title: Collection Interval
+        required: true
+        show_user: true
+        default: 60s
+    template_path: stream.yml.hbs
+elasticsearch:
+  index_mode: time_series
+  index_template:
+    settings:
+      index:
+        mapping:
+          total_fields:
+            limit: 2000
+    mappings:
+      subobjects: false

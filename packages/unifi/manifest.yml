@@ -1,10 +1,10 @@
 format_version: 3.5.5
 name: unifi
 title: "Ubiquiti UniFi"
-version: 0.1.6
+version: 0.2.11
 source:
   license: "Apache-2.0"
-description: "Elastic Agent integration for Ubiquiti UniFi products including Network, Protect, and other UniFi ecosystem devices. Provides automatic device type detection and ECS field mapping for syslog data, with API monitoring support planned for future releases."
+description: "Elastic Agent integration for Ubiquiti UniFi products. Collects syslog events from UniFi devices and metrics from UniFi Network Application API including device health, port statistics, radio metrics, WiFi SSIDs, and connected clients."
 type: integration
 categories:
   - network
@@ -27,12 +27,35 @@ icons:
     type: image/svg+xml
 policy_templates:
   - name: unifi
-    title: UniFi
-    description: Collect logs and metrics from UniFi devices
+    title: UniFi Logs and Metrics
+    description: |
+      Collect logs and metrics from UniFi devices.
+
+      **Logs**: Syslog events from UniFi devices (firewall, IPS, authentication, etc.)
+
+      **Metrics**: Performance data from UniFi Network Application API:
+      - Device Metrics: Core device health, CPU, memory, traffic
+      - Port Metrics: Per-port statistics for switches
+      - Radio Metrics: Per-radio metrics for access points
+      - VAP Metrics: Per-SSID WiFi network statistics
+      - Client Metrics: Connected client signal and traffic data
     inputs:
       - type: filestream
-        title: Collect UniFi syslog data from files
-        description: Collecting UniFi device logs via syslog filestream
+        title: UniFi Syslog Events (Logs)
+        description: Collect syslog data from UniFi devices via file or syslog server
+      - type: httpjson
+        title: UniFi Network Metrics (API)
+        description: |
+          Collect metrics from UniFi Network Application API.
+
+          Enable individual metric streams based on your needs:
+          - Device Metrics: Essential for all deployments
+          - Port Metrics: For switch monitoring
+          - Radio Metrics: For WiFi radio performance
+          - VAP Metrics: For per-SSID monitoring
+          - Client Metrics: For end-user experience tracking
+
+          Each stream can be independently enabled and configured.
 owner:
   github: elastic/integrations
   type: community

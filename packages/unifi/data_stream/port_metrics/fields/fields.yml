@@ -1,0 +1,118 @@
+- name: unifi.site
+  type: group
+  fields:
+    - name: name
+      type: keyword
+- name: unifi.device
+  type: group
+  fields:
+    - name: type
+      type: keyword
+- name: unifi.port
+  type: group
+  fields:
+    - name: id
+      type: long
+      dimension: true
+    - name: number
+      type: long
+    - name: name
+      type: keyword
+    - name: enabled
+      type: boolean
+    - name: up
+      type: boolean
+    - name: speed
+      type: long
+      metric_type: gauge
+    - name: duplex
+      type: keyword
+    - name: is_uplink
+      type: boolean
+    - name: bytes
+      type: group
+      fields:
+        - name: rx
+          type: long
+          metric_type: counter
+        - name: tx
+          type: long
+          metric_type: counter
+        - name: rate
+          type: double
+          metric_type: gauge
+          unit: byte
+        - name: rx_rate
+          type: double
+          metric_type: gauge
+          unit: byte
+        - name: tx_rate
+          type: double
+          metric_type: gauge
+          unit: byte
+    - name: packets
+      type: group
+      fields:
+        - name: rx
+          type: long
+          metric_type: counter
+        - name: tx
+          type: long
+          metric_type: counter
+        - name: rx_broadcast
+          type: long
+          metric_type: counter
+        - name: rx_multicast
+          type: long
+          metric_type: counter
+        - name: tx_broadcast
+          type: long
+          metric_type: counter
+        - name: tx_multicast
+          type: long
+          metric_type: counter
+    - name: errors
+      type: group
+      fields:
+        - name: rx
+          type: long
+          metric_type: counter
+        - name: tx
+          type: long
+          metric_type: counter
+    - name: dropped
+      type: group
+      fields:
+        - name: rx
+          type: long
+          metric_type: counter
+        - name: tx
+          type: long
+          metric_type: counter
+    - name: satisfaction
+      type: long
+      metric_type: gauge
+    - name: satisfaction_reason
+      type: long
+    - name: link_down_count
+      type: long
+      metric_type: counter
+    - name: mac_table_count
+      type: long
+      metric_type: gauge
+    - name: poe
+      type: group
+      fields:
+        - name: enabled
+          type: boolean
+        - name: power
+          type: double
+          metric_type: gauge
+        - name: voltage
+          type: double
+          metric_type: gauge
+    - name: stp
+      type: group
+      fields:
+        - name: state
+          type: keyword

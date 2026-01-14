@@ -1,0 +1,195 @@
+request.url: https://{{controller_host}}:{{controller_port}}/proxy/network/api/s/{{site_name}}/stat/device
+request.method: GET
+request.ssl.verification_mode: {{#if verify_ssl}}full{{else}}none{{/if}}
+request.timeout: 30s
+request.transforms:
+  - set:
+      target: header.X-API-KEY
+      value: {{api_key}}
+  - set:
+      target: header.Accept
+      value: application/json
+
+# Split by devices first
+response.split:
+  target: body.data
+  type: array
+  keep_parent: false
+
+response.transforms:
+  # Keep site context
+  - set:
+      target: body.unifi_site_name
+      value: "{{site_name}}"
+  - set:
+      target: body.observer_host
+      value: "{{controller_host}}"
+
+interval: {{collection_interval}}
+
+request.retry.max_attempts: 3
+request.retry.wait_min: 1s
+request.retry.wait_max: 60s
+
+processors:
+  - add_fields:
+      target: ''
+      fields:
+        ecs.version: 8.11.0
+        event.dataset: unifi.port_metrics
+        event.module: unifi
+        event.kind: metric
+        observer.type: unifi-controller
+  # JavaScript processor to extract ports and create one event per port
+  - script:
+      lang: javascript
+      source: |
+        function process(event) {
+          var device = event.Get("data");
+
+          // Only process switches with port_table
+          if (!device || device.type !== "usw" || !device.port_table || !Array.isArray(device.port_table)) {
+            event.Cancel();
+            return;
+          }
+
+          // Extract device context
+          var deviceMac = device.mac;
+          var deviceName = device.name || deviceMac;
+          var deviceId = device._id || deviceMac;
+          var siteName = event.Get("unifi_site_name");
+          var observerHost = event.Get("observer_host");
+
+          // Create events for each port
+          var ports = device.port_table;
+          var portEvents = [];
+
+          for (var i = 0; i < ports.length; i++) {
+            var port = ports[i];
+
+            // Create a new event for this port
+            var portEvent = {
+              "@timestamp": new Date().toISOString(),
+              "ecs": {"version": "8.11.0"},
+              "event": {
+                "dataset": "unifi.port_metrics",
+                "module": "unifi",
+                "kind": "metric"
+              },
+              "observer": {
+                "type": "unifi-controller",
+                "ip": observerHost
+              },
+              "device": {
+                "id": deviceId,
+                "mac": deviceMac,
+                "name": deviceName,
+                "type": "switch"
+              },
+              "unifi": {
+                "site": {
+                  "name": siteName
+                },
+                "device": {
+                  "type": "usw"
+                },
+                "port": {
+                  "id": port.port_idx,
+                  "number": port.port_idx,
+                  "name": port.name || "Port " + port.port_idx,
+                  "enabled": port.enabled || port.enable || false,
+                  "up": port.up || false,
+                  "speed": port.speed,
+                  "duplex": port.full_duplex ? "full" : "half",
+                  "is_uplink": port.is_uplink || false,
+                  "bytes": {
+                    "rx": port.rx_bytes || 0,
+                    "tx": port.tx_bytes || 0,
+                    "rate": port["bytes-r"] || 0,
+                    "rx_rate": port["rx_bytes-r"] || 0,
+                    "tx_rate": port["tx_bytes-r"] || 0
+                  },
+                  "packets": {
+                    "rx": port.rx_packets || 0,
+                    "tx": port.tx_packets || 0,
+                    "rx_broadcast": port.rx_broadcast || 0,
+                    "rx_multicast": port.rx_multicast || 0,
+                    "tx_broadcast": port.tx_broadcast || 0,
+                    "tx_multicast": port.tx_multicast || 0
+                  },
+                  "errors": {
+                    "rx": port.rx_errors || 0,
+                    "tx": port.tx_errors || 0
+                  },
+                  "dropped": {
+                    "rx": port.rx_dropped || 0,
+                    "tx": port.tx_dropped || 0
+                  },
+                  "satisfaction": port.satisfaction,
+                  "satisfaction_reason": port.satisfaction_reason,
+                  "link_down_count": port.link_down_count || 0,
+                  "mac_table_count": port.mac_table_count || 0
+                }
+              }
+            };
+
+            // PoE fields if available
+            if (port.port_poe || port.poe_enable) {
+              portEvent.unifi.port.poe = {
+                "enabled": port.port_poe || port.poe_enable || false,
+                "power": port.poe_power,
+                "voltage": port.poe_voltage
+              };
+            }
+
+            // STP fields
+            if (port.stp_state) {
+              portEvent.unifi.port.stp = {
+                "state": port.stp_state
+              };
+            }
+
+            portEvents.push(portEvent);
+          }
+
+          // Cancel the original event and emit port events
+          if (portEvents.length > 0) {
+            event.Put("port_events", portEvents);
+          } else {
+            event.Cancel();
+          }
+        }
+  # Extract each port event from the array
+  - script:
+      lang: javascript
+      source: |
+        function process(event) {
+          var portEvents = event.Get("port_events");
+          if (!portEvents || portEvents.length === 0) {
+            event.Cancel();
+            return;
+          }
+
+          // Take the first port event
+          var portEvent = portEvents[0];
+
+          // Copy all fields to the event
+          for (var key in portEvent) {
+            event.Put(key, portEvent[key]);
+          }
+
+          // If there are more ports, keep them for next iteration
+          if (portEvents.length > 1) {
+            var remaining = portEvents.slice(1);
+            event.Put("port_events", remaining);
+          } else {
+            event.Delete("port_events");
+          }
+        }
+  - drop_fields:
+      fields:
+        - data
+        - port_events
+        - unifi_site_name
+        - observer_host
+      ignore_missing: true
