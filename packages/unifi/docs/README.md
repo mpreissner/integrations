@@ -89,19 +89,6 @@ Standard ECS fields are also populated:
 - `network.*`: Network connection details (for firewall logs)
 - `source.*` / `destination.*`: Network endpoints
 
-## Dashboards
-
-### Overview Dashboard
-
-The integration includes a pre-built Overview Dashboard with the following visualizations:
-
-- **Activity Timeline**: Stacked area chart showing log activity over time broken down by device type
-- **Event Type Distribution**: Donut chart displaying the distribution of event actions (firewall allows/denies, DNS queries, DHCP events, VPN connections, etc.)
-- **Top Firewall Rules**: Table showing the most frequently triggered firewall rules with hit counts
-- **Top Active Devices**: Horizontal bar chart of the devices generating the most log activity
-
-Access the dashboard after installation via **Analytics → Dashboard** and search for "[UniFi] Overview Dashboard".
-
 ## Requirements
 
 - Elastic Stack 9.0.8+
@@ -111,7 +98,7 @@ Access the dashboard after installation via **Analytics → Dashboard** and sear
 ## Future Enhancements
 
 - API data stream for metrics collection from UniFi Network Application
-- Additional dashboards for security analysis and network health monitoring
+- Pre-built Kibana dashboards for network monitoring and security analysis
 
 ## License
 
