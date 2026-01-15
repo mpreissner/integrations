@@ -1,4 +1,52 @@
 # newer versions go on top
+- version: "0.2.20"
+  changes:
+    - description: Added quotes to api_key in state section for consistent string handling across all CEL data streams.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.19"
+  changes:
+    - description: Fixed CEL runtime error in device_metrics by properly checking nested field existence before accessing system-stats.cpu and system-stats.mem fields.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.18"
+  changes:
+    - description: Fixed CEL syntax error in device_metrics caused by extra closing parenthesis in CPU and memory percentage calculations.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.17"
+  changes:
+    - description: Fixed CEL division operator type mismatch error in device_metrics for CPU and memory percentage calculations. Corrected parentheses to ensure ternary operator is fully evaluated before division.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.16"
+  changes:
+    - description: Fixed CEL has() macro syntax errors by replacing invalid `has(object["field"])` pattern with correct `"field" in object` pattern for all hyphenated field names. The has() macro in CEL only accepts field accessors, not bracket notation.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.15"
+  changes:
+    - description: Fixed CEL syntax errors for fields with hyphens in names. Replaced invalid `.?["field-name"].orValue()` pattern with proper `has()` checks and ternary operators for all hyphenated field names across all data streams.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.14"
+  changes:
+    - description: Migrated all 5 metric data streams from HTTPJSON to CEL (Common Expression Language) input for better performance, maintainability, and native support for nested array flattening. CEL provides cleaner syntax, built-in array iteration with .map() and .flatten(), and eliminates the need for complex JavaScript processors.
+      type: enhancement
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.13"
+  changes:
+    - description: Fixed critical bug where JavaScript processors were trying to emit multiple events but only one would reach Elasticsearch. Replaced with proper split processor pattern for port_metrics, radio_metrics, and vap_metrics streams. This ensures all port/radio/VAP events are properly ingested instead of being dropped.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.12"
+  changes:
+    - description: Fixed JSON path parsing errors in device_metrics stream caused by mixed bracket and dot notation in value_type json transforms
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+    - description: Added missing device.mac dimension field to port_metrics base-fields.yml for TSDS routing
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
 - version: "0.2.11"
   changes:
     - description: Restructured metrics collection into 5 specialized data streams (device_metrics, port_metrics, radio_metrics, vap_metrics, client_metrics) to solve document drop issues caused by field count limits. Each stream now extracts only necessary fields (~50-150 per stream vs 2,876), normalizes hyphenated field names, and uses common ECS fields for cross-index queries. Removed old monolithic metrics data stream.

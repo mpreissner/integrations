@@ -1,0 +1,130 @@
+config_version: 2
+resource:
+  url: "https://{{controller_host}}:{{controller_port}}"
+  {{#if verify_ssl}}
+  ssl:
+    verification_mode: full
+  {{else}}
+  ssl:
+    verification_mode: none
+  {{/if}}
+  timeout: 30s
+  retry:
+    max_attempts: 3
+    wait_min: 1s
+    wait_max: 60s
+
+interval: {{collection_interval}}
+
+program: |
+  request(
+    "GET",
+    state.url.trim_right("/") + "/proxy/network/api/s/" + state.site_name + "/stat/device"
+  ).with({
+    "Header": {
+      "X-API-KEY": [state.api_key],
+      "Accept": ["application/json"]
+    }
+  }).do_request().as(resp,
+    resp.StatusCode == 200 ?
+      bytes(resp.Body).decode_json().as(body,
+        {
+          "events": body.data
+            .filter(device, device.type == "usw" && has(device.port_table) && size(device.port_table) > 0)
+            .map(device,
+              device.port_table.map(port,
+                device.with({"port": port}).drop("port_table")
+              )
+            )
+            .flatten()
+            .map(e, {
+              "ecs": {"version": "8.11.0"},
+              "event": {
+                "dataset": "unifi.port_metrics",
+                "module": "unifi",
+                "kind": "metric"
+              },
+              "observer": {
+                "type": "unifi-controller",
+                "ip": state.controller_host
+              },
+              "device": {
+                "id": e._id,
+                "mac": e.mac,
+                "name": e.?name.orValue(""),
+                "type": "switch"
+              },
+              "unifi": {
+                "site": {"name": state.site_name},
+                "device": {"type": "usw"},
+                "port": {
+                  "id": e.port.port_idx,
+                  "number": e.port.port_idx,
+                  "name": e.port.?name.orValue("Port " + string(e.port.port_idx)),
+                  "enabled": e.port.?enabled.orValue(e.port.?enable.orValue(false)),
+                  "up": e.port.?up.orValue(false),
+                  "speed": e.port.?speed.orValue(0),
+                  "full_duplex": e.port.?full_duplex.orValue(false),
+                  "is_uplink": e.port.?is_uplink.orValue(false),
+                  "bytes": {
+                    "rx": e.port.?rx_bytes.orValue(0),
+                    "tx": e.port.?tx_bytes.orValue(0),
+                    "rate": "bytes-r" in e.port ? e.port["bytes-r"] : 0,
+                    "rx_rate": "rx_bytes-r" in e.port ? e.port["rx_bytes-r"] : 0,
+                    "tx_rate": "tx_bytes-r" in e.port ? e.port["tx_bytes-r"] : 0
+                  },
+                  "packets": {
+                    "rx": e.port.?rx_packets.orValue(0),
+                    "tx": e.port.?tx_packets.orValue(0),
+                    "broadcast_rx": e.port.?rx_broadcast.orValue(0),
+                    "broadcast_tx": e.port.?tx_broadcast.orValue(0),
+                    "multicast_rx": e.port.?rx_multicast.orValue(0),
+                    "multicast_tx": e.port.?tx_multicast.orValue(0)
+                  },
+                  "errors": {
+                    "rx": e.port.?rx_errors.orValue(0),
+                    "tx": e.port.?tx_errors.orValue(0)
+                  },
+                  "dropped": {
+                    "rx": e.port.?rx_dropped.orValue(0),
+                    "tx": e.port.?tx_dropped.orValue(0)
+                  },
+                  "poe": {
+                    "enable": e.port.?poe_enable.orValue(false),
+                    "mode": e.port.?poe_mode.orValue(""),
+                    "power": e.port.?poe_power.orValue(0),
+                    "voltage": e.port.?poe_voltage.orValue(0),
+                    "current": e.port.?poe_current.orValue(0),
+                    "class": e.port.?poe_class.orValue("")
+                  },
+                  "stp": {
+                    "state": e.port.?stp_state.orValue(""),
+                    "pathcost": e.port.?stp_pathcost.orValue(0)
+                  },
+                  "media": e.port.?media.orValue(""),
+                  "port_poe": e.port.?port_poe.orValue(false),
+                  "flowctrl_rx": e.port.?flowctrl_rx.orValue(false),
+                  "flowctrl_tx": e.port.?flowctrl_tx.orValue(false)
+                }
+              }
+            })
+        }
+      )
+    :
+      {
+        "events": [{
+          "error": {"message": "HTTP response code: " + string(resp.StatusCode)},
+          "event": {"original": string(resp.Body)}
+        }]
+      }
+  )
+
+state:
+  api_key: "{{api_key}}"
+  controller_host: "{{controller_host}}"
+  site_name: "{{site_name}}"
+  url: "https://{{controller_host}}:{{controller_port}}"
+
+redact:
+  fields:
+    - api_key

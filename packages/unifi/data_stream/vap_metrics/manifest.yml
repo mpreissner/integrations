@@ -1,7 +1,7 @@
 title: "UniFi VAP Metrics"
 type: metrics
 streams:
-  - input: httpjson
+  - input: cel
     title: UniFi WiFi SSID (VAP) Metrics
     description: Collect per-SSID metrics from UniFi access points
     enabled: true
@@ -42,7 +42,7 @@ streams:
         required: true
         show_user: true
         default: 60s
-    template_path: stream.yml.hbs
+    template_path: cel.yml.hbs
 elasticsearch:
   index_mode: time_series
   index_template:

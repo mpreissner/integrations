@@ -74,6 +74,7 @@ processors:
           event.Put("unifi", unifi);
           event.Put("client", {"mac": client.mac, "ip": client.ip});
           event.Put("host", {"hostname": client.hostname || client.name});
+          event.Put("observer", {"type": "unifi-controller"});
         }
   - add_fields:
       target: ''
@@ -82,7 +83,6 @@ processors:
         event.dataset: unifi.client_metrics
         event.module: unifi
         event.kind: metric
-        observer.type: unifi-controller
   - drop_fields:
       fields: [data]
       ignore_missing: true

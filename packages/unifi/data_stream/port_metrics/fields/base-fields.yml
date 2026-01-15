@@ -10,3 +10,7 @@
 - name: '@timestamp'
   type: date
   description: Event timestamp.
+- name: device.mac
+  type: keyword
+  dimension: true
+  description: Device MAC address (dimension for TSDS)

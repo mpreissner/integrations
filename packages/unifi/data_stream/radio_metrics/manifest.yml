@@ -1,7 +1,7 @@
 title: "UniFi Radio Metrics"
 type: metrics
 streams:
-  - input: httpjson
+  - input: cel
     title: UniFi Access Point Radio Metrics
     description: Collect per-radio metrics from UniFi access points
     enabled: true
@@ -42,7 +42,7 @@ streams:
         required: true
         show_user: true
         default: 60s
-    template_path: stream.yml.hbs
+    template_path: cel.yml.hbs
 elasticsearch:
   index_mode: time_series
   index_template:

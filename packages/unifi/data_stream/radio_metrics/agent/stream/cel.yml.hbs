@@ -1,0 +1,122 @@
+config_version: 2
+resource:
+  url: "https://{{controller_host}}:{{controller_port}}"
+  {{#if verify_ssl}}
+  ssl:
+    verification_mode: full
+  {{else}}
+  ssl:
+    verification_mode: none
+  {{/if}}
+  timeout: 30s
+  retry:
+    max_attempts: 3
+    wait_min: 1s
+    wait_max: 60s
+
+interval: {{collection_interval}}
+
+program: |
+  request(
+    "GET",
+    state.url.trim_right("/") + "/proxy/network/api/s/" + state.site_name + "/stat/device"
+  ).with({
+    "Header": {
+      "X-API-KEY": [state.api_key],
+      "Accept": ["application/json"]
+    }
+  }).do_request().as(resp,
+    resp.StatusCode == 200 ?
+      bytes(resp.Body).decode_json().as(body,
+        {
+          "events": body.data
+            .filter(device, device.type == "uap" && has(device.radio_table_stats) && size(device.radio_table_stats) > 0)
+            .map(device,
+              device.radio_table_stats.map(radio,
+                device.with({"radio": radio}).drop("radio_table_stats")
+              )
+            )
+            .flatten()
+            .map(e, {
+              "ecs": {"version": "8.11.0"},
+              "event": {
+                "dataset": "unifi.radio_metrics",
+                "module": "unifi",
+                "kind": "metric"
+              },
+              "observer": {
+                "type": "unifi-controller",
+                "ip": state.controller_host
+              },
+              "device": {
+                "id": e._id,
+                "mac": e.mac,
+                "name": e.?name.orValue(""),
+                "type": "access-point"
+              },
+              "unifi": {
+                "site": {"name": state.site_name},
+                "device": {"type": "uap"},
+                "radio": {
+                  "name": e.radio.name,
+                  "radio": e.radio.radio,
+                  "channel": e.radio.?channel.orValue(0),
+                  "tx_power": e.radio.?tx_power.orValue(0),
+                  "tx_power_mode": e.radio.?tx_power_mode.orValue(""),
+                  "min_rssi_enabled": e.radio.?min_rssi_enabled.orValue(false),
+                  "min_rssi": e.radio.?min_rssi.orValue(0),
+                  "utilization": {
+                    "total": "cu-total" in e.radio ? e.radio["cu-total"] : 0,
+                    "self_rx": "cu-self-rx" in e.radio ? e.radio["cu-self-rx"] : 0,
+                    "self_tx": "cu-self-tx" in e.radio ? e.radio["cu-self-tx"] : 0
+                  },
+                  "bytes": {
+                    "rx": "user-rx_bytes" in e.radio ? e.radio["user-rx_bytes"] : 0,
+                    "tx": "user-tx_bytes" in e.radio ? e.radio["user-tx_bytes"] : 0
+                  },
+                  "packets": {
+                    "rx": "user-rx_packets" in e.radio ? e.radio["user-rx_packets"] : 0,
+                    "tx": "user-tx_packets" in e.radio ? e.radio["user-tx_packets"] : 0
+                  },
+                  "clients": {
+                    "count": e.radio.?num_sta.orValue(0)
+                  },
+                  "guest_clients": {
+                    "count": "guest-num_sta" in e.radio ? e.radio["guest-num_sta"] : 0
+                  },
+                  "user_clients": {
+                    "count": "user-num_sta" in e.radio ? e.radio["user-num_sta"] : 0
+                  },
+                  "satisfaction": e.radio.?satisfaction.orValue(0),
+                  "state": e.radio.?state.orValue(""),
+                  "extchannel": e.radio.?extchannel.orValue(0),
+                  "radio_caps": e.radio.?radio_caps.orValue(0),
+                  "builtin_ant_gain": e.radio.?builtin_ant_gain.orValue(0),
+                  "builtin_antenna": e.radio.?builtin_antenna.orValue(false),
+                  "max_txpower": e.radio.?max_txpower.orValue(0),
+                  "min_txpower": e.radio.?min_txpower.orValue(0),
+                  "nss": e.radio.?nss.orValue(0),
+                  "radio_caps2": e.radio.?radio_caps2.orValue(0)
+                }
+              }
+            })
+        }
+      )
+    :
+      {
+        "events": [{
+          "error": {"message": "HTTP response code: " + string(resp.StatusCode)},
+          "event": {"original": string(resp.Body)}
+        }]
+      }
+  )
+
+state:
+  api_key: "{{api_key}}"
+  controller_host: "{{controller_host}}"
+  site_name: "{{site_name}}"
+  url: "https://{{controller_host}}:{{controller_port}}"
+
+redact:
+  fields:
+    - api_key

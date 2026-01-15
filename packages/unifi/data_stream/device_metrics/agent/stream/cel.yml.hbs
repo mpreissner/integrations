@@ -1,0 +1,142 @@
+config_version: 2
+resource:
+  url: "https://{{controller_host}}:{{controller_port}}"
+  {{#if verify_ssl}}
+  ssl:
+    verification_mode: full
+  {{else}}
+  ssl:
+    verification_mode: none
+  {{/if}}
+  timeout: 30s
+  retry:
+    max_attempts: 3
+    wait_min: 1s
+    wait_max: 60s
+
+interval: {{collection_interval}}
+
+program: |
+  request(
+    "GET",
+    state.url.trim_right("/") + "/proxy/network/api/s/" + state.site_name + "/stat/device"
+  ).with({
+    "Header": {
+      "X-API-KEY": [state.api_key],
+      "Accept": ["application/json"]
+    }
+  }).do_request().as(resp,
+    resp.StatusCode == 200 ?
+      bytes(resp.Body).decode_json().as(body,
+        {
+          "events": body.data.map(device, {
+            "ecs": {"version": "8.11.0"},
+            "event": {
+              "dataset": "unifi.device_metrics",
+              "module": "unifi",
+              "kind": "metric"
+            },
+            "observer": {
+              "type": "unifi-controller",
+              "ip": state.controller_host
+            },
+            "device": {
+              "id": device._id,
+              "mac": device.mac,
+              "name": device.?name.orValue(""),
+              "type": (
+                device.type == "uap" ? "access-point" :
+                device.type == "usw" ? "switch" :
+                device.type in ["udm", "uxg", "usg"] ? "gateway" :
+                "unknown"
+              )
+            },
+            "host": {
+              "ip": device.?ip.orValue(""),
+              "mac": [device.mac],
+              "uptime": device.?uptime.orValue(0)
+            },
+            "unifi": {
+              "site": {"name": state.site_name},
+              "device": {
+                "type": device.type,
+                "state": device.?state.orValue(0),
+                "adopted": device.?adopted.orValue(false),
+                "version": device.?version.orValue(""),
+                "satisfaction": device.?satisfaction.orValue(0),
+                "anomalies": device.?anomalies.orValue(0),
+                "bytes": {
+                  "total": device.?bytes.orValue(0),
+                  "rx": device.?rx_bytes.orValue(0),
+                  "tx": device.?tx_bytes.orValue(0),
+                  "rate": "bytes-r" in device ? device["bytes-r"] : 0,
+                  "daily": {
+                    "total": "bytes-d" in device ? device["bytes-d"] : 0,
+                    "rx": "rx_bytes-d" in device ? device["rx_bytes-d"] : 0,
+                    "tx": "tx_bytes-d" in device ? device["tx_bytes-d"] : 0
+                  }
+                },
+                "clients": {
+                  "total": device.?num_sta.orValue(0),
+                  "user": "user-num_sta" in device ? device["user-num_sta"] : 0,
+                  "guest": "guest-num_sta" in device ? device["guest-num_sta"] : 0,
+                  "wired": "lan-num_sta" in device ? device["lan-num_sta"] : 0,
+                  "wireless": "wlan-num_sta" in device ? device["wlan-num_sta"] : 0
+                },
+                "system": {
+                  "cpu": {
+                    "pct": (("system-stats" in device && "cpu" in device["system-stats"]) ? device["system-stats"].cpu : 0.0) / 100.0
+                  },
+                  "memory": {
+                    "pct": (("system-stats" in device && "mem" in device["system-stats"]) ? device["system-stats"].mem : 0.0) / 100.0
+                  },
+                  "uptime": device.?sys_stats.uptime.orValue(0),
+                  "temperature": device.?general_temperature.orValue(0),
+                  "load": {
+                    "1m": device.?sys_stats.loadavg_1.orValue(0),
+                    "5m": device.?sys_stats.loadavg_5.orValue(0),
+                    "15m": device.?sys_stats.loadavg_15.orValue(0)
+                  }
+                },
+                "wan": has(device.stat) && has(device.stat.gw) ? {
+                  "bytes": {
+                    "rx": ("wan-rx_bytes" in device.stat.gw) ? device.stat.gw["wan-rx_bytes"] : 0,
+                    "tx": ("wan-tx_bytes" in device.stat.gw) ? device.stat.gw["wan-tx_bytes"] : 0
+                  },
+                  "packets": {
+                    "rx": ("wan-rx_packets" in device.stat.gw) ? device.stat.gw["wan-rx_packets"] : 0,
+                    "tx": ("wan-tx_packets" in device.stat.gw) ? device.stat.gw["wan-tx_packets"] : 0
+                  }
+                } : {},
+                "lan": has(device.stat) && has(device.stat.gw) ? {
+                  "bytes": {
+                    "rx": ("lan-rx_bytes" in device.stat.gw) ? device.stat.gw["lan-rx_bytes"] : 0,
+                    "tx": ("lan-tx_bytes" in device.stat.gw) ? device.stat.gw["lan-tx_bytes"] : 0
+                  }
+                } : {},
+                "fan": {
+                  "level": device.?fan_level.orValue(0)
+                }
+              }
+            }
+          })
+        }
+      )
+    :
+      {
+        "events": [{
+          "error": {"message": "HTTP response code: " + string(resp.StatusCode)},
+          "event": {"original": string(resp.Body)}
+        }]
+      }
+  )
+
+state:
+  api_key: "{{api_key}}"
+  controller_host: "{{controller_host}}"
+  site_name: "{{site_name}}"
+  url: "https://{{controller_host}}:{{controller_port}}"
+
+redact:
+  fields:
+    - api_key

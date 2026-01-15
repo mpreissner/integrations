@@ -1,0 +1,136 @@
+config_version: 2
+resource:
+  url: "https://{{controller_host}}:{{controller_port}}"
+  {{#if verify_ssl}}
+  ssl:
+    verification_mode: full
+  {{else}}
+  ssl:
+    verification_mode: none
+  {{/if}}
+  timeout: 30s
+  retry:
+    max_attempts: 3
+    wait_min: 1s
+    wait_max: 60s
+
+interval: {{collection_interval}}
+
+program: |
+  request(
+    "GET",
+    state.url.trim_right("/") + "/proxy/network/api/s/" + state.site_name + "/stat/device"
+  ).with({
+    "Header": {
+      "X-API-KEY": [state.api_key],
+      "Accept": ["application/json"]
+    }
+  }).do_request().as(resp,
+    resp.StatusCode == 200 ?
+      bytes(resp.Body).decode_json().as(body,
+        {
+          "events": body.data
+            .filter(device, device.type == "uap" && has(device.vap_table) && size(device.vap_table) > 0)
+            .map(device,
+              device.vap_table.map(vap,
+                device.with({"vap": vap}).drop("vap_table")
+              )
+            )
+            .flatten()
+            .map(e, {
+              "ecs": {"version": "8.11.0"},
+              "event": {
+                "dataset": "unifi.vap_metrics",
+                "module": "unifi",
+                "kind": "metric"
+              },
+              "observer": {
+                "type": "unifi-controller",
+                "ip": state.controller_host
+              },
+              "device": {
+                "id": e._id,
+                "mac": e.mac,
+                "name": e.?name.orValue(""),
+                "type": "access-point"
+              },
+              "unifi": {
+                "site": {"name": state.site_name},
+                "device": {"type": "uap"},
+                "vap": {
+                  "bssid": e.vap.bssid,
+                  "ccq": e.vap.?ccq.orValue(0),
+                  "channel": e.vap.?channel.orValue(0),
+                  "essid": e.vap.?essid.orValue(""),
+                  "id": e.vap.?id.orValue(""),
+                  "is_guest": e.vap.?is_guest.orValue(false),
+                  "is_wep": e.vap.?is_wep.orValue(false),
+                  "name": e.vap.?name.orValue(""),
+                  "radio": e.vap.?radio.orValue(""),
+                  "radio_name": e.vap.?radio_name.orValue(""),
+                  "rx_nwids": e.vap.?rx_nwids.orValue(0),
+                  "state": e.vap.?state.orValue(""),
+                  "tx_power": e.vap.?tx_power.orValue(0),
+                  "up": e.vap.?up.orValue(false),
+                  "usage": e.vap.?usage.orValue(""),
+                  "t": e.vap.?t.orValue(""),
+                  "wlanconf_id": e.vap.?wlanconf_id.orValue(""),
+                  "ap_mac": e.vap.?ap_mac.orValue(""),
+                  "map_id": e.vap.?map_id.orValue(""),
+                  "site_id": e.vap.?site_id.orValue(""),
+                  "extchannel": e.vap.?extchannel.orValue(0),
+                  "clients": {
+                    "count": e.vap.?num_sta.orValue(0)
+                  },
+                  "bytes": {
+                    "rx": "rx_bytes" in e.vap ? e.vap["rx_bytes"] : 0,
+                    "tx": "tx_bytes" in e.vap ? e.vap["tx_bytes"] : 0
+                  },
+                  "packets": {
+                    "rx": e.vap.?rx_packets.orValue(0),
+                    "tx": e.vap.?tx_packets.orValue(0)
+                  },
+                  "errors": {
+                    "rx": e.vap.?rx_errors.orValue(0),
+                    "tx": e.vap.?tx_errors.orValue(0)
+                  },
+                  "dropped": {
+                    "rx": e.vap.?rx_dropped.orValue(0),
+                    "tx": e.vap.?tx_dropped.orValue(0)
+                  },
+                  "crypted": {
+                    "rx": e.vap.?rx_crypts.orValue(0),
+                    "tx": e.vap.?tx_crypts.orValue(0)
+                  },
+                  "frags": {
+                    "rx": e.vap.?rx_frags.orValue(0),
+                    "tx": e.vap.?tx_frags.orValue(0)
+                  },
+                  "retries": {
+                    "rx": e.vap.?rx_retries.orValue(0),
+                    "tx": e.vap.?tx_retries.orValue(0)
+                  },
+                  "satisfaction": e.vap.?satisfaction.orValue(0)
+                }
+              }
+            })
+        }
+      )
+    :
+      {
+        "events": [{
+          "error": {"message": "HTTP response code: " + string(resp.StatusCode)},
+          "event": {"original": string(resp.Body)}
+        }]
+      }
+  )
+
+state:
+  api_key: "{{api_key}}"
+  controller_host: "{{controller_host}}"
+  site_name: "{{site_name}}"
+  url: "https://{{controller_host}}:{{controller_port}}"
+
+redact:
+  fields:
+    - api_key

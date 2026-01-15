@@ -1,7 +1,7 @@
 title: "UniFi Device Metrics"
 type: metrics
 streams:
-  - input: httpjson
+  - input: cel
     title: UniFi Device Core Metrics
     description: Collect core device health and performance metrics from UniFi Network Application
     enabled: true
@@ -48,7 +48,7 @@ streams:
         required: true
         show_user: true
         default: 60s
-    template_path: stream.yml.hbs
+    template_path: cel.yml.hbs
 elasticsearch:
   index_mode: time_series
   index_template:

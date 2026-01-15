@@ -27,62 +27,67 @@ request.retry.max_attempts: 3
 request.retry.wait_min: 1s
 
 processors:
+  # Filter to only APs and extract radio_table_stats to top level
   - script:
       lang: javascript
       source: |
         function process(event) {
           var device = event.Get("data");
-          if (!device || device.type !== "uap" || !device.radio_table_stats) {
+          if (!device || device.type !== "uap" || !device.radio_table_stats || !Array.isArray(device.radio_table_stats)) {
             event.Cancel();
             return;
           }
-
-          var radios = device.radio_table_stats;
-          var radioEvents = [];
-
-          for (var i = 0; i < radios.length; i++) {
-            var radio = radios[i];
-            radioEvents.push({
-              "device": {"id": device._id, "mac": device.mac, "name": device.name, "type": "access-point"},
-              "unifi": {
-                "site": {"name": event.Get("site_name")},
-                "device": {"type": "uap"},
-                "radio": {
-                  "name": radio.name,
-                  "radio": radio.radio,
-                  "channel": radio.channel,
-                  "tx_power": radio.tx_power,
-                  "utilization": {
-                    "total": radio.cu_total,
-                    "self_rx": radio.cu_self_rx,
-                    "self_tx": radio.cu_self_tx
-                  },
-                  "clients": {"count": radio.num_sta},
-                  "satisfaction": radio.satisfaction,
-                  "state": radio.state
-                }
-              }
-            });
-          }
-
-          if (radioEvents.length > 0) event.Put("radio_events", radioEvents);
-          else event.Cancel();
+          event.Put("device_context", {
+            "id": device._id,
+            "mac": device.mac,
+            "name": device.name
+          });
+          event.Put("radios", device.radio_table_stats);
         }
+  # Split into one event per radio
+  - split:
+      field: radios
+      target: radio
+  # Build the radio event structure
   - script:
       lang: javascript
       source: |
         function process(event) {
-          var radioEvents = event.Get("radio_events");
-          if (!radioEvents || radioEvents.length === 0) {
-            event.Cancel();
-            return;
-          }
-          for (var key in radioEvents[0]) {
-            event.Put(key, radioEvents[0][key]);
-          }
-          if (radioEvents.length > 1) {
-            event.Put("radio_events", radioEvents.slice(1));
-          }
+          var radio = event.Get("radio");
+          var deviceCtx = event.Get("device_context");
+          var siteName = event.Get("site_name");
+          var observerHost = event.Get("observer_host");
+
+          event.Put("device", {
+            "id": deviceCtx.id,
+            "mac": deviceCtx.mac,
+            "name": deviceCtx.name,
+            "type": "access-point"
+          });
+
+          event.Put("unifi", {
+            "site": {"name": siteName},
+            "device": {"type": "uap"},
+            "radio": {
+              "name": radio.name,
+              "radio": radio.radio,
+              "channel": radio.channel,
+              "tx_power": radio.tx_power,
+              "utilization": {
+                "total": radio.cu_total,
+                "self_rx": radio.cu_self_rx,
+                "self_tx": radio.cu_self_tx
+              },
+              "clients": {"count": radio.num_sta},
+              "satisfaction": radio.satisfaction,
+              "state": radio.state
+            }
+          });
+
+          event.Put("observer", {
+            "type": "unifi-controller",
+            "ip": observerHost
+          });
         }
   - add_fields:
       target: ''
@@ -91,7 +96,12 @@ processors:
         event.dataset: unifi.radio_metrics
         event.module: unifi
         event.kind: metric
-        observer.type: unifi-controller
   - drop_fields:
-      fields: [data, radio_events, site_name, observer_host]
+      fields:
+        - data
+        - radio
+        - radios
+        - device_context
+        - site_name
+        - observer_host
       ignore_missing: true

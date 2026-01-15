@@ -1,0 +1,114 @@
+config_version: 2
+resource:
+  url: "https://{{controller_host}}:{{controller_port}}"
+  {{#if verify_ssl}}
+  ssl:
+    verification_mode: full
+  {{else}}
+  ssl:
+    verification_mode: none
+  {{/if}}
+  timeout: 30s
+  retry:
+    max_attempts: 3
+    wait_min: 1s
+    wait_max: 60s
+
+interval: {{collection_interval}}
+
+program: |
+  request(
+    "GET",
+    state.url.trim_right("/") + "/proxy/network/api/s/" + state.site_name + "/stat/sta"
+  ).with({
+    "Header": {
+      "X-API-KEY": [state.api_key],
+      "Accept": ["application/json"]
+    }
+  }).do_request().as(resp,
+    resp.StatusCode == 200 ?
+      bytes(resp.Body).decode_json().as(body,
+        {
+          "events": body.data.map(client, {
+            "ecs": {"version": "8.11.0"},
+            "event": {
+              "dataset": "unifi.client_metrics",
+              "module": "unifi",
+              "kind": "metric"
+            },
+            "observer": {
+              "type": "unifi-controller",
+              "ip": state.controller_host
+            },
+            "client": {
+              "mac": client.mac,
+              "ip": client.?ip.orValue("")
+            },
+            "host": {
+              "hostname": client.?hostname.orValue(client.?name.orValue(""))
+            },
+            "unifi": {
+              "site": {"name": state.site_name},
+              "client": {
+                "mac": client.mac,
+                "ip": client.?ip.orValue(""),
+                "hostname": client.?hostname.orValue(client.?name.orValue("")),
+                "is_wired": client.?is_wired.orValue(false),
+                "is_guest": client.?is_guest.orValue(false),
+                "network": {
+                  "name": client.?network.orValue("")
+                },
+                "bytes": {
+                  "rx": client.?is_wired.orValue(false) ?
+                    ("wired-rx_bytes" in client ? client["wired-rx_bytes"] : client.?rx_bytes.orValue(0)) :
+                    client.?rx_bytes.orValue(0),
+                  "tx": client.?is_wired.orValue(false) ?
+                    ("wired-tx_bytes" in client ? client["wired-tx_bytes"] : client.?tx_bytes.orValue(0)) :
+                    client.?tx_bytes.orValue(0)
+                },
+                "packets": {
+                  "rx": client.?is_wired.orValue(false) ?
+                    ("wired-rx_packets" in client ? client["wired-rx_packets"] : client.?rx_packets.orValue(0)) :
+                    client.?rx_packets.orValue(0),
+                  "tx": client.?is_wired.orValue(false) ?
+                    ("wired-tx_packets" in client ? client["wired-tx_packets"] : client.?tx_packets.orValue(0)) :
+                    client.?tx_packets.orValue(0)
+                },
+                "uptime": client.?uptime.orValue(0),
+                "satisfaction": client.?satisfaction.orValue(0),
+                "wifi": !client.?is_wired.orValue(false) ? {
+                  "ssid": client.?essid.orValue(""),
+                  "bssid": client.?bssid.orValue(""),
+                  "radio": client.?radio.orValue(""),
+                  "channel": client.?channel.orValue(0),
+                  "rssi": client.?rssi.orValue(0),
+                  "signal": client.?signal.orValue(0),
+                  "noise": client.?noise.orValue(0)
+                } : {},
+                "wired": client.?is_wired.orValue(false) ? {
+                  "switch_mac": client.?sw_mac.orValue(""),
+                  "switch_port": client.?sw_port.orValue(0)
+                } : {}
+              }
+            }
+          })
+        }
+      )
+    :
+      {
+        "events": [{
+          "error": {"message": "HTTP response code: " + string(resp.StatusCode)},
+          "event": {"original": string(resp.Body)}
+        }]
+      }
+  )
+
+state:
+  api_key: "{{api_key}}"
+  controller_host: "{{controller_host}}"
+  site_name: "{{site_name}}"
+  url: "https://{{controller_host}}:{{controller_port}}"
+
+redact:
+  fields:
+    - api_key

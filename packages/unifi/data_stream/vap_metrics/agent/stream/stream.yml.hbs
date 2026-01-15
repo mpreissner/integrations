@@ -23,62 +23,63 @@ interval: {{collection_interval}}
 request.retry.max_attempts: 3
 
 processors:
+  # Filter to only APs and extract vap_table to top level
   - script:
       lang: javascript
       source: |
         function process(event) {
           var device = event.Get("data");
-          if (!device || device.type !== "uap" || !device.vap_table) {
+          if (!device || device.type !== "uap" || !device.vap_table || !Array.isArray(device.vap_table)) {
             event.Cancel();
             return;
           }
-
-          var vaps = device.vap_table;
-          var vapEvents = [];
-
-          for (var i = 0; i < vaps.length; i++) {
-            var vap = vaps[i];
-            vapEvents.push({
-              "device": {"id": device._id, "mac": device.mac, "name": device.name, "type": "access-point"},
-              "unifi": {
-                "site": {"name": event.Get("site_name")},
-                "device": {"type": "uap"},
-                "vap": {
-                  "id": vap.id,
-                  "name": vap.name,
-                  "ssid": vap.essid,
-                  "bssid": vap.bssid,
-                  "radio": vap.radio,
-                  "channel": vap.channel,
-                  "clients": {"count": vap.num_sta},
-                  "bytes": {"rx": vap.rx_bytes || 0, "tx": vap.tx_bytes || 0},
-                  "packets": {"rx": vap.rx_packets || 0, "tx": vap.tx_packets || 0},
-                  "errors": {"rx": vap.rx_errors || 0, "tx": vap.tx_errors || 0},
-                  "dropped": {"rx": vap.rx_dropped || 0, "tx": vap.tx_dropped || 0},
-                  "satisfaction": vap.satisfaction
-                }
-              }
-            });
-          }
-
-          if (vapEvents.length > 0) event.Put("vap_events", vapEvents);
-          else event.Cancel();
+          event.Put("device_context", {
+            "id": device._id,
+            "mac": device.mac,
+            "name": device.name
+          });
+          event.Put("vaps", device.vap_table);
         }
+  # Split into one event per VAP
+  - split:
+      field: vaps
+      target: vap
+  # Build the VAP event structure
   - script:
       lang: javascript
       source: |
         function process(event) {
-          var vapEvents = event.Get("vap_events");
-          if (!vapEvents || vapEvents.length === 0) {
-            event.Cancel();
-            return;
-          }
-          for (var key in vapEvents[0]) {
-            event.Put(key, vapEvents[0][key]);
-          }
-          if (vapEvents.length > 1) {
-            event.Put("vap_events", vapEvents.slice(1));
-          }
+          var vap = event.Get("vap");
+          var deviceCtx = event.Get("device_context");
+          var siteName = event.Get("site_name");
+
+          event.Put("device", {
+            "id": deviceCtx.id,
+            "mac": deviceCtx.mac,
+            "name": deviceCtx.name,
+            "type": "access-point"
+          });
+
+          event.Put("unifi", {
+            "site": {"name": siteName},
+            "device": {"type": "uap"},
+            "vap": {
+              "id": vap.id,
+              "name": vap.name,
+              "ssid": vap.essid,
+              "bssid": vap.bssid,
+              "radio": vap.radio,
+              "channel": vap.channel,
+              "clients": {"count": vap.num_sta},
+              "bytes": {"rx": vap.rx_bytes || 0, "tx": vap.tx_bytes || 0},
+              "packets": {"rx": vap.rx_packets || 0, "tx": vap.tx_packets || 0},
+              "errors": {"rx": vap.rx_errors || 0, "tx": vap.tx_errors || 0},
+              "dropped": {"rx": vap.rx_dropped || 0, "tx": vap.tx_dropped || 0},
+              "satisfaction": vap.satisfaction
+            }
+          });
+
+          event.Put("observer", {"type": "unifi-controller"});
         }
   - add_fields:
       target: ''
@@ -87,7 +88,11 @@ processors:
         event.dataset: unifi.vap_metrics
         event.module: unifi
         event.kind: metric
-        observer.type: unifi-controller
   - drop_fields:
-      fields: [data, vap_events, site_name]
+      fields:
+        - data
+        - vap
+        - vaps
+        - device_context
+        - site_name
       ignore_missing: true

@@ -150,17 +150,17 @@ response.transforms:
   # System stats (normalize hyphenated nested fields)
   - set:
       target: body.device_system_cpu
-      value: ".data['system-stats'].cpu"
+      value: ".data['system-stats']['cpu']"
       value_type: json
       fail_on_template_error: false
   - set:
       target: body.device_system_memory
-      value: ".data['system-stats'].mem"
+      value: ".data['system-stats']['mem']"
       value_type: json
       fail_on_template_error: false
   - set:
       target: body.device_system_uptime
-      value: ".data.sys_stats.uptime"
+      value: ".data['sys_stats']['uptime']"
       value_type: json
       fail_on_template_error: false
 
@@ -174,49 +174,49 @@ response.transforms:
   # Load averages (gateway/UDM)
   - set:
       target: body.device_load_1m
-      value: ".data.sys_stats.loadavg_1"
+      value: ".data['sys_stats']['loadavg_1']"
       value_type: json
       fail_on_template_error: false
   - set:
       target: body.device_load_5m
-      value: ".data.sys_stats.loadavg_5"
+      value: ".data['sys_stats']['loadavg_5']"
       value_type: json
       fail_on_template_error: false
   - set:
       target: body.device_load_15m
-      value: ".data.sys_stats.loadavg_15"
+      value: ".data['sys_stats']['loadavg_15']"
       value_type: json
       fail_on_template_error: false
 
   # Gateway WAN/LAN stats (from stat.gw nested object)
   - set:
       target: body.device_wan_rx_bytes
-      value: ".data.stat.gw['wan-rx_bytes']"
+      value: ".data['stat']['gw']['wan-rx_bytes']"
       value_type: json
       fail_on_template_error: false
   - set:
       target: body.device_wan_tx_bytes
-      value: ".data.stat.gw['wan-tx_bytes']"
+      value: ".data['stat']['gw']['wan-tx_bytes']"
       value_type: json
       fail_on_template_error: false
   - set:
       target: body.device_wan_rx_packets
-      value: ".data.stat.gw['wan-rx_packets']"
+      value: ".data['stat']['gw']['wan-rx_packets']"
       value_type: json
       fail_on_template_error: false
   - set:
       target: body.device_wan_tx_packets
-      value: ".data.stat.gw['wan-tx_packets']"
+      value: ".data['stat']['gw']['wan-tx_packets']"
       value_type: json
       fail_on_template_error: false
   - set:
       target: body.device_lan_rx_bytes
-      value: ".data.stat.gw['lan-rx_bytes']"
+      value: ".data['stat']['gw']['lan-rx_bytes']"
       value_type: json
       fail_on_template_error: false
   - set:
       target: body.device_lan_tx_bytes
-      value: ".data.stat.gw['lan-tx_bytes']"
+      value: ".data['stat']['gw']['lan-tx_bytes']"
       value_type: json
       fail_on_template_error: false
 
