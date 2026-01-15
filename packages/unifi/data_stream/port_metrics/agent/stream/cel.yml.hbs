@@ -29,6 +29,11 @@ program: |
     resp.StatusCode == 200 ?
       bytes(resp.Body).decode_json().as(body,
         {
+          "cursor": state.cursor,
+          "api_key": state.api_key,
+          "controller_host": state.controller_host,
+          "site_name": state.site_name,
+          "url": state.url,
           "events": body.data
             .filter(device, device.type == "usw" && has(device.port_table) && size(device.port_table) > 0)
             .map(device,
@@ -112,6 +117,11 @@ program: |
       )
     :
       {
+        "cursor": state.cursor,
+        "api_key": state.api_key,
+        "controller_host": state.controller_host,
+        "site_name": state.site_name,
+        "url": state.url,
         "events": [{
           "error": {"message": "HTTP response code: " + string(resp.StatusCode)},
           "event": {"original": string(resp.Body)}
@@ -120,6 +130,7 @@ program: |
   )
 
 state:
+  cursor: {}
   api_key: "{{api_key}}"
   controller_host: "{{controller_host}}"
   site_name: "{{site_name}}"

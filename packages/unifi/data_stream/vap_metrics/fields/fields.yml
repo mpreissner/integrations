@@ -1,0 +1,6 @@
+- name: unifi.vap
+  type: group
+  fields:
+    - name: usage
+      type: keyword
+      description: VAP usage type (user or guest)

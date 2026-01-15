@@ -39,6 +39,7 @@ streams:
       - name: collection_interval
         type: text
         title: Collection Interval
+        description: How often to poll for radio metrics
         required: true
         show_user: true
         default: 60s

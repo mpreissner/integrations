@@ -1,4 +1,19 @@
 # newer versions go on top
+- version: "0.2.34"
+  changes:
+    - description: Fixed vap_metrics field type error for usage field. Explicitly defined usage as keyword type (values are "user" or "guest") to prevent Elasticsearch from incorrectly inferring it as scaled_float, which was causing all VAP metric documents to be rejected during indexing.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.33"
+  changes:
+    - description: Applied state persistence fix to all 5 metric streams (port_metrics, radio_metrics, vap_metrics, client_metrics). All streams now return full state object (cursor, api_key, controller_host, site_name, url) in CEL response and initialize cursor in state section. Fixes "no such key" errors on subsequent polling intervals.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.32"
+  changes:
+    - description: Reverted to stream-level controller variables (v0.2.29 approach). Each metric stream defines its own controller_host, controller_port, api_key, verify_ssl, site_name, and collection_interval. Variable consolidation at policy/input level causes Handlebars template resolution issues.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
 - version: "0.2.29"
   changes:
     - description: Initialize cursor as empty map in state section to fix "no such key cursor" error. Cursor must exist in initial state to be returned in response.
