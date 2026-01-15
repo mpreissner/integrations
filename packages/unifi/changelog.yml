@@ -1,4 +1,49 @@
 # newer versions go on top
+- version: "0.2.29"
+  changes:
+    - description: Initialize cursor as empty map in state section to fix "no such key cursor" error. Cursor must exist in initial state to be returned in response.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.28"
+  changes:
+    - description: Fixed state persistence by returning full state object (api_key, controller_host, site_name, url) in CEL response, not just cursor. The returned state becomes the state for next iteration.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.27"
+  changes:
+    - description: Fixed state persistence between polling intervals by returning cursor in CEL response. State must be explicitly returned to persist across iterations. This fixes "no such key site_name" errors on subsequent polls.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.26"
+  changes:
+    - description: Fixed device_metrics cpu/mem conversion using correct Go stdlib replace signature with 4 parameters. Changed to string(field).replace(' ', '', -1) where -1 means replace all occurrences. Elastic CEL uses mito library with Go strings package.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.25"
+  changes:
+    - description: Fixed device_metrics cpu/mem conversion using replace() to remove whitespace from string values before converting to double. Changed to string(field).replace(' ', '') pattern since trim() not available on dynamic types.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.24"
+  changes:
+    - description: Fixed device_metrics cpu/mem conversion by calling trim() method directly on string fields (e.g. device["system-stats"].cpu.trim()) before converting to double. UniFi API returns values with whitespace that prevented conversion.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.23"
+  changes:
+    - description: Simplified device_metrics cpu/mem conversion to use double() directly without trim (CEL does not have trim method). Testing if double() can parse strings with whitespace.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.22"
+  changes:
+    - description: Fixed device_metrics type conversion error by trimming whitespace from system-stats cpu and mem strings before converting to double. UniFi API returns values with leading/trailing spaces (e.g. "  2.2", " 80.5").
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
+- version: "0.2.21"
+  changes:
+    - description: Fixed device_metrics CEL runtime error by converting system-stats cpu and mem string values to numbers using double() before division. UniFi API returns these values as strings (e.g. "1.6", "34.5") which must be converted to numeric types.
+      type: bugfix
+      link: https://github.com/elastic/integrations/pull/1
 - version: "0.2.20"
   changes:
     - description: Added quotes to api_key in state section for consistent string handling across all CEL data streams.

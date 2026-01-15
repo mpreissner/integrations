@@ -1,7 +1,7 @@
 format_version: 3.5.5
 name: unifi
 title: "Ubiquiti UniFi"
-version: 0.2.20
+version: 0.2.29
 source:
   license: "Apache-2.0"
 description: "Elastic Agent integration for Ubiquiti UniFi products. Collects syslog events from UniFi devices and metrics from UniFi Network Application API including device health, port statistics, radio metrics, WiFi SSIDs, and connected clients."

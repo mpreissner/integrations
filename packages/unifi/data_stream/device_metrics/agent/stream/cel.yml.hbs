@@ -29,6 +29,11 @@ program: |
     resp.StatusCode == 200 ?
       bytes(resp.Body).decode_json().as(body,
         {
+          "cursor": state.cursor,
+          "api_key": state.api_key,
+          "controller_host": state.controller_host,
+          "site_name": state.site_name,
+          "url": state.url,
           "events": body.data.map(device, {
             "ecs": {"version": "8.11.0"},
             "event": {
@@ -85,10 +90,10 @@ program: |
                 },
                 "system": {
                   "cpu": {
-                    "pct": (("system-stats" in device && "cpu" in device["system-stats"]) ? device["system-stats"].cpu : 0.0) / 100.0
+                    "pct": ("system-stats" in device && "cpu" in device["system-stats"]) ? double(string(device["system-stats"].cpu).replace(' ', '', -1)) / 100.0 : 0.0
                   },
                   "memory": {
-                    "pct": (("system-stats" in device && "mem" in device["system-stats"]) ? device["system-stats"].mem : 0.0) / 100.0
+                    "pct": ("system-stats" in device && "mem" in device["system-stats"]) ? double(string(device["system-stats"].mem).replace(' ', '', -1)) / 100.0 : 0.0
                   },
                   "uptime": device.?sys_stats.uptime.orValue(0),
                   "temperature": device.?general_temperature.orValue(0),
@@ -124,6 +129,11 @@ program: |
       )
     :
       {
+        "cursor": state.cursor,
+        "api_key": state.api_key,
+        "controller_host": state.controller_host,
+        "site_name": state.site_name,
+        "url": state.url,
         "events": [{
           "error": {"message": "HTTP response code: " + string(resp.StatusCode)},
           "event": {"original": string(resp.Body)}
@@ -132,6 +142,7 @@ program: |
   )
 
 state:
+  cursor: {}
   api_key: "{{api_key}}"
   controller_host: "{{controller_host}}"
   site_name: "{{site_name}}"
